@@ -15,6 +15,7 @@ const Gdk = imports.gi.Gdk;
 const AppDisplay = imports.ui.appDisplay;
 const Dash = imports.ui.dash;
 const DND = imports.ui.dnd;
+const JournalDisplay = imports.ui.journalDisplay;
 const Lightbox = imports.ui.lightbox;
 const Main = imports.ui.main;
 const MessageTray = imports.ui.messageTray;
@@ -184,6 +185,9 @@ Overview.prototype = {
 
         let appView = new AppDisplay.AllAppDisplay();
         this.viewSelector.addViewTab(_("Applications"), appView.actor);
+
+        let journalView = new JournalDisplay.JournalDisplay ();
+        this.viewSelector.addViewTab(_("Recent Activities"), journalView.actor);
 
         // Default search providers
         this.viewSelector.addSearchProvider(new AppDisplay.AppSearchProvider());
