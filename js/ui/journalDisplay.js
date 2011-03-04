@@ -26,6 +26,8 @@ JournalLayout.prototype = {
         this._items = [];
         this.actor = new Shell.GenericContainer ({ style_class: 'journal' });
         this.actor.connect ("allocate", Lang.bind (this, this._allocate));
+
+        this._needs_relayout = false;
     },
 
     appendItem: function (item) {
@@ -33,6 +35,7 @@ JournalLayout.prototype = {
             throw new Error ("item must not be null");
 
         this._items.push (item);
+        this._needs_relayout = true;
     },
 
     _allocate: function (layout, box, flags) {
@@ -41,6 +44,9 @@ JournalLayout.prototype = {
     },
 
     _computeLayout: function (available_width) {
+        if (!this._needs_relayout)
+            return;
+
         let layout_state = { newline_goal_column: 0,
                              x: 0,
                              y: 0,
@@ -63,7 +69,7 @@ JournalLayout.prototype = {
             }
 
             item.setPosition (layout_state.x, layout_state.y);
-            
+
             layout_state.x += item_layout.width; // FIXME: column spacing?
             if (item_layout.height > layout_state.row_height)
                 layout_state.row_height = item_layout.height;
@@ -72,6 +78,8 @@ JournalLayout.prototype = {
                 newline ();
             }
         }
+
+        this._needs_relayout = false;
     }
 
 };
@@ -110,14 +118,14 @@ HeadingItem.prototype = {
     _init: function (label_text) {
         this._label_text = label_text;
     },
-    
+
     getLayout: function () {
         return { width: 0, // FIXME
                  height: 0, // FIXME
                  needs_newline_before: true,
                  needs_newline_after: true };
     },
-    
+
     setPosition: function (x, y) {
         // FIXME
     }
