@@ -132,25 +132,6 @@ HeadingItem.prototype = {
 };
 
 
-//*** TimeView ***
-
-function TimeView () {
-    this._init();
-}
-
-TimeView.prototype = {
-    _init: function () {
-	this._iconGrid = new IconGrid.IconGrid ({ xAlign: St.Align.START });
-	this.actor = new St.ScrollView ({ x_fill: true,
-					  y_fill: false,
-					  y_align: St.Align.START,
-					  vfade: true });
-	this.actor.add_actor (this._iconGrid.actor);
-        this.actor.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.ALWAYS);
-    },
-};
-
-
 //*** JournalDisplay ***
 
 function JournalDisplay () {
@@ -159,8 +140,13 @@ function JournalDisplay () {
 
 JournalDisplay.prototype = {
     _init: function () {
-	this._timeView = new TimeView ();
-	this.actor = this._timeView.actor;
+        this._layout = new JournalLayout ();
+	this.actor = new St.ScrollView ({ x_fill: true,
+					  y_fill: false,
+					  y_align: St.Align.START,
+					  vfade: true });
+        this.actor.add_actor (this._layout.actor);
+        this.actor.set_policy (Gtk.PolicyType.NEVER, Gtk.PolicyType.ALWAYS);
 
         this._get_events ();
     },
