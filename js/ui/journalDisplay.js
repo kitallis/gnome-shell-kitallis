@@ -13,6 +13,7 @@ const _ = Gettext.gettext;
 
 const IconGrid = imports.ui.iconGrid;
 const Zeitgeist = imports.misc.zeitgeist;
+const DocInfo = imports.misc.docInfo;
 
 
 //*** JournalLayout ***
@@ -38,12 +39,12 @@ JournalLayout.prototype = {
         this._needs_relayout = true;
     },
 
-    _allocate: function (layout, box, flags) {
+    _allocate: function (actor, box, flags) {
         let width = box.x2 - box.x1;
-        this._computeLayout (width);
+        this._computeLayout (width, flags);
     },
 
-    _computeLayout: function (available_width) {
+    _computeLayout: function (available_width, flags) {
         if (!this._needs_relayout)
             return;
 
@@ -67,8 +68,14 @@ JournalLayout.prototype = {
                 || (layout_state.x + item_layout.width > layout_state.layout_width)) {
                 newline ();
             }
+            
+            let box = new Clutter.ActorBox ();
+            box.x1 = layout_state.x;
+            box.y1 = layout_state.y;
+            box.x2 = box.x1 + item_layout.width;
+            box.y2 = box.y1 + item_layout.height;
 
-            item.setPosition (layout_state.x, layout_state.y);
+            item.allocate (box, flags);
 
             layout_state.x += item_layout.width; // FIXME: column spacing?
             if (item_layout.height > layout_state.row_height)
@@ -85,25 +92,56 @@ JournalLayout.prototype = {
 };
 
 
-//*** IconItem ***
+//*** EventItem ***
+//
+// This is an item that wraps a ZeitgeistItemInfo, which is in turn
+// created from an event as returned by the Zeitgeist D-Bus API.
 
-function IconItem () {
-    this._init ();
+function EventItem (event) {
+    this._init (event);
 }
 
-IconItem.prototype = {
-    _init: function () {
+EventItem.prototype = {
+    _init: function (event) {
+        if (!event)
+            throw new Error ("event must not be null");
+
+        this._item_info = new DocInfo.ZeitgeistItemInfo (event);
+        this.actor = null;
     },
 
     getLayout: function () {
-        return { width: 0, // FIXME
-                 height: 0, // FIXME
+        let min_w, nat_w;
+        let min_h, nat_h;
+
+        this._ensureIconActor ();
+        
+        if (this.actor) {
+            [min_w, nat_w] = this.actor.get_preferred_width (-1);
+            [min_h, nat_h] = this.actor.get_preferred_height (-1);
+        } else {
+            [min_w, nat_w] = [0, 0];
+            [min_h, nat_h] = [0, 0];
+        }
+
+        return { width: nat_w,
+                 height: nat_h,
                  needs_newline_before: false,
                  needs_newline_after: false };
     },
 
-    setPosition: function (x, y) {
-        // FIXME
+    allocate: function (box, flags) {
+        if (!this.actor)
+            return;
+
+        this.actor.allocate (box, flags);
+    },
+    
+    _ensureIconActor: function () {
+        if (this.actor)
+            return;
+        
+        this.actor = this._item_info.createIcon (48); // FIXME: fetch the icon size from the theme's CSS
     }
 };
 
