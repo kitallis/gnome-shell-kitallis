@@ -3,6 +3,7 @@
 // Style classes used here:
 //
 // journal - The main journal layout
+// journal-heading - Heading labels for date blocks inside the jorunal
 
 const Clutter = imports.gi.Clutter;
 const GLib = imports.gi.GLib;
@@ -151,6 +152,9 @@ EventItem.prototype = {
 
 
 //*** HeadingItem ***
+//
+// A simple label for the date block headings in the journal, i.e. the
+// labels that display each day's date.
 
 function HeadingItem (label_text) {
     this._init (label_text);
@@ -159,17 +163,21 @@ function HeadingItem (label_text) {
 HeadingItem.prototype = {
     _init: function (label_text) {
         this._label_text = label_text;
+        this.actor = new St.Label ({ text: label_text,
+                                     style_class: 'journal-heading' });
     },
 
     getLayout: function () {
-        return { width: 0, // FIXME
-                 height: 0, // FIXME
+        let [min_w, nat_w] = this.actor.get_preferred_width (-1);
+        let [min_h, nat_h] = this.actor.get_preferred_height (-1);
+        return { width: nat_w,
+                 height: nat_h,
                  needs_newline_before: true,
                  needs_newline_after: true };
     },
 
-    setPosition: function (x, y) {
-        // FIXME
+    allocate: function (box, flags) {
+        this.actor.allocate (box, flags);
     }
 };
 
