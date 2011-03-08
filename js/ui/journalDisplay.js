@@ -30,8 +30,19 @@ function JournalLayout () {
 JournalLayout.prototype = {
     _init: function () {
         this._items = [];
-        this.actor = new Shell.GenericContainer ({ style_class: 'journal' });
-        this.actor.connect ("allocate", Lang.bind (this, this._allocate));
+        this._container = new Shell.GenericContainer ({ style_class: 'journal' });
+
+        // We pack the Shell.GenericContainer inside a box so that it will be scrollable.
+        // Shell.GenericContainer doesn't implement the StScrollable interface,
+        // but St.BoxLayout does.
+        let box = new St.BoxLayout({ vertical: true });
+        box.add (this._container, { y_align: St.Align.START, expand: true });
+
+        this.actor = box;
+
+        this._container.connect ("allocate", Lang.bind (this, this._allocate));
+        this._container.connect ("get-preferred-width", Lang.bind (this, this._getPreferredWidth));
+        this._container.connect ("get-preferred-height", Lang.bind (this, this._getPreferredHeight));
 
         this._needs_relayout = false;
     },
@@ -47,6 +58,17 @@ JournalLayout.prototype = {
     _allocate: function (actor, box, flags) {
         let width = box.x2 - box.x1;
         this._computeLayout (width, flags);
+    },
+
+    _getPreferredWidth: function (actor, forHeight, alloc) {
+        alloc.min_size = 48; // FIXME: get the icon size from CSS
+        alloc.natural_size = 200; // FIXME
+    },
+
+    _getPreferredHeight: function (actor, forWidth, alloc) {
+        this._computeLayout (forWidth);
+        alloc.min_size = 48; // FIXME: get the icon size from CSS - maybe this should be an icon's worth plus a heading's?
+        alloc.natural_size = 200; // FIXME
     },
 
     _computeLayout: function (available_width, flags) {
@@ -73,13 +95,14 @@ JournalLayout.prototype = {
                 || (layout_state.x + item_layout.width > layout_state.layout_width)) {
                 newline ();
             }
-            
+
             let box = new Clutter.ActorBox ();
             box.x1 = layout_state.x;
             box.y1 = layout_state.y;
             box.x2 = box.x1 + item_layout.width;
             box.y2 = box.y1 + item_layout.height;
 
+            this._container.add_actor (item.actor);
             item.allocate (box, flags);
 
             layout_state.x += item_layout.width; // FIXME: column spacing?
@@ -120,7 +143,7 @@ EventItem.prototype = {
         let min_h, nat_h;
 
         this._ensureIconActor ();
-        
+
         if (this.actor) {
             [min_w, nat_w] = this.actor.get_preferred_width (-1);
             [min_h, nat_h] = this.actor.get_preferred_height (-1);
@@ -141,11 +164,11 @@ EventItem.prototype = {
 
         this.actor.allocate (box, flags);
     },
-    
+
     _ensureIconActor: function () {
         if (this.actor)
             return;
-        
+
         this.actor = this._item_info.createIcon (48); // FIXME: fetch the icon size from the theme's CSS
     }
 };
@@ -191,18 +214,20 @@ function JournalDisplay () {
 JournalDisplay.prototype = {
     _init: function () {
         this._layout = new JournalLayout ();
-	this.actor = new St.ScrollView ({ x_fill: true,
-					  y_fill: false,
-					  y_align: St.Align.START,
-					  vfade: true });
-        this.actor.add_actor (this._layout.actor);
-        this.actor.set_policy (Gtk.PolicyType.NEVER, Gtk.PolicyType.ALWAYS);
+        this._scroll_view = new St.ScrollView ({ x_fill: true,
+                                                 y_fill: false,
+					         y_align: St.Align.START,
+					         vfade: true });
+	this.actor = this._scroll_view;
+
+        this._scroll_view.add_actor (this._layout.actor);
+        this._scroll_view.set_policy (Gtk.PolicyType.NEVER, Gtk.PolicyType.ALWAYS);
 
         this._get_events ();
     },
 
     _get_events: function () {
-        let subject = new Zeitgeist.Subject ("file://*", "", "", "", "", "", "")
+        let subject = new Zeitgeist.Subject ("file://*", "", "", "", "", "", "");
         let event = new Zeitgeist.Event("", "", "", [subject], []);
 
         Zeitgeist.findEvents ([0, 9999999999999],                        // time_range
@@ -218,8 +243,8 @@ JournalDisplay.prototype = {
                                                  this._layout.appendItem (item);
                                              }
                                          }));
-        
-        
-    },
+
+
+    }
 
 };
