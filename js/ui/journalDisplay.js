@@ -212,7 +212,14 @@ JournalDisplay.prototype = {
                               Zeitgeist.ResultType.MOST_RECENT_SUBJECTS, // result_type
                               Lang.bind (this, function (events) {
                                              log ("got " + events.length + " events");
+                                             for (let i = 0; i < events.length; i++) {
+                                                 let e = events[i];
+                                                 let item = new EventItem (e);
+                                                 this._layout.appendItem (item);
+                                             }
                                          }));
+        
+        
     },
 
 };
