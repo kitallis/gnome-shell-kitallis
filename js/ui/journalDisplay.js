@@ -145,7 +145,7 @@ EventItem.prototype = {
             throw new Error ("event must not be null");
 
         this._item_info = new DocInfo.ZeitgeistItemInfo (event);
-        this.actor = this._item_info.createIcon (48); // FIXME: fetch the icon size from the theme's CSS
+        this.actor = this._item_info.createIcon (128); // FIXME: fetch the icon size from the theme's CSS
         // FIXME: we are generating the icon synchronously.  Do it async.
     },
 
