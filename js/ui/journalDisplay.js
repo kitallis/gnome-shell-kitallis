@@ -77,7 +77,6 @@ JournalLayout.prototype = {
     },
 
     _getPreferredHeight: function (actor, forWidth, alloc) {
-        this._computeLayout (forWidth);
         alloc.min_size = 48; // FIXME: get the icon size from CSS - maybe this should be an icon's worth plus a heading's?
         alloc.natural_size = 200; // FIXME
     },
