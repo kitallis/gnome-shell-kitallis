@@ -53,7 +53,11 @@ JournalLayout.prototype = {
         if (!item)
             throw new Error ("item must not be null");
 
+        if (!item.actor)
+            throw new Error ("Item must already contain an actor when added to the JournalLayout");
+
         this._items.push (item);
+        this._container.add_actor (item.actor);
     },
 
     _styleChanged: function () {
@@ -109,7 +113,6 @@ JournalLayout.prototype = {
             box.x2 = box.x1 + item_layout.width;
             box.y2 = box.y1 + item_layout.height;
 
-            this._container.add_actor (item.actor);
             item.allocate (box, flags);
 
             log ("_computeLayout(): item spacing is " + this._itemSpacing);
@@ -142,14 +145,13 @@ EventItem.prototype = {
             throw new Error ("event must not be null");
 
         this._item_info = new DocInfo.ZeitgeistItemInfo (event);
-        this.actor = null;
+        this.actor = this._item_info.createIcon (48); // FIXME: fetch the icon size from the theme's CSS
+        // FIXME: we are generating the icon synchronously.  Do it async.
     },
 
     getLayout: function () {
         let min_w, nat_w;
         let min_h, nat_h;
-
-        this._ensureIconActor ();
 
         if (this.actor) {
             [min_w, nat_w] = this.actor.get_preferred_width (-1);
@@ -170,13 +172,6 @@ EventItem.prototype = {
             return;
 
         this.actor.allocate (box, flags);
-    },
-
-    _ensureIconActor: function () {
-        if (this.actor)
-            return;
-
-        this.actor = this._item_info.createIcon (48); // FIXME: fetch the icon size from the theme's CSS
     }
 };
 
