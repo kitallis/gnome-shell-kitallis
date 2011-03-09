@@ -64,6 +64,8 @@ JournalLayout.prototype = {
 
         this._itemSpacing = node.get_length ("item-spacing");
         this._rowSpacing = node.get_length ("row-spacing");
+
+        this._container.queue_relayout ();
     },
 
     _allocate: function (actor, box, flags) {
