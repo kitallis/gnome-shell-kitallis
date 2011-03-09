@@ -31,7 +31,7 @@ JournalLayout.prototype = {
     _init: function () {
         this._items = [];
         this._container = new Shell.GenericContainer ({ style_class: 'journal' });
-        
+
         this._container.connect ("style-changed", Lang.bind (this, this._styleChanged));
         this._itemSpacing = 0; // "item-spacing" attribute
         this._rowSpacing = 0;  // "row-spacing" attribute
@@ -47,8 +47,6 @@ JournalLayout.prototype = {
         this._container.connect ("allocate", Lang.bind (this, this._allocate));
         this._container.connect ("get-preferred-width", Lang.bind (this, this._getPreferredWidth));
         this._container.connect ("get-preferred-height", Lang.bind (this, this._getPreferredHeight));
-
-        this._needs_relayout = false;
     },
 
     appendItem: function (item) {
@@ -56,10 +54,10 @@ JournalLayout.prototype = {
             throw new Error ("item must not be null");
 
         this._items.push (item);
-        this._needs_relayout = true;
     },
-    
+
     _styleChanged: function () {
+        log ("JournalLayout: _styleChanged()");
         let node = this._container.get_theme_node ();
 
         this._itemSpacing = node.get_length ("item-spacing");
@@ -85,9 +83,6 @@ JournalLayout.prototype = {
     },
 
     _computeLayout: function (available_width, flags) {
-        if (!this._needs_relayout)
-            return;
-
         let layout_state = { newline_goal_column: 0,
                              x: 0,
                              y: 0,
@@ -118,6 +113,8 @@ JournalLayout.prototype = {
             this._container.add_actor (item.actor);
             item.allocate (box, flags);
 
+            log ("_computeLayout(): item spacing is " + this._itemSpacing);
+
             layout_state.x += item_layout.width + this._itemSpacing;
             if (item_layout.height > layout_state.row_height)
                 layout_state.row_height = item_layout.height;
@@ -126,8 +123,6 @@ JournalLayout.prototype = {
                 newline ();
             }
         }
-
-        this._needs_relayout = false;
     }
 
 };
