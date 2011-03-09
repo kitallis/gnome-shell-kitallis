@@ -1429,3 +1429,10 @@ StTooltip StLabel {
 .magnifier-zoom-region.full-screen {
     border-width: 0px;
 }
+
+/* Journal */
+
+.journal {
+    item-spacing: 12px;
+    row-spacing: 12px;
+}

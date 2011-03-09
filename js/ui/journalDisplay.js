@@ -31,6 +31,10 @@ JournalLayout.prototype = {
     _init: function () {
         this._items = [];
         this._container = new Shell.GenericContainer ({ style_class: 'journal' });
+        
+        this._container.connect ("style-changed", Lang.bind (this, this._styleChanged));
+        this._itemSpacing = 0; // "item-spacing" attribute
+        this._rowSpacing = 0;  // "row-spacing" attribute
 
         // We pack the Shell.GenericContainer inside a box so that it will be scrollable.
         // Shell.GenericContainer doesn't implement the StScrollable interface,
@@ -53,6 +57,13 @@ JournalLayout.prototype = {
 
         this._items.push (item);
         this._needs_relayout = true;
+    },
+    
+    _styleChanged: function () {
+        let node = this._container.get_theme_node ();
+
+        this._itemSpacing = node.get_length ("item-spacing");
+        this._rowSpacing = node.get_length ("row-spacing");
     },
 
     _allocate: function (actor, box, flags) {
