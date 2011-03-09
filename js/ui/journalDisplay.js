@@ -94,7 +94,7 @@ JournalLayout.prototype = {
 
         let newline = function () {
             layout_state.x = layout_state.newline_goal_column;
-            layout_state.y += layout_state.row_height; // FIXME: row spacing?
+            layout_state.y += layout_state.row_height + this._rowSpacing;
             layout_state.row_height = 0;
         };
 
@@ -116,7 +116,7 @@ JournalLayout.prototype = {
             this._container.add_actor (item.actor);
             item.allocate (box, flags);
 
-            layout_state.x += item_layout.width; // FIXME: column spacing?
+            layout_state.x += item_layout.width + this._itemSpacing;
             if (item_layout.height > layout_state.row_height)
                 layout_state.row_height = item_layout.height;
 
