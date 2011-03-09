@@ -95,11 +95,11 @@ JournalLayout.prototype = {
                              row_height : 0,
                              layout_width: available_width };
 
-        let newline = function () {
+        let newline = Lang.bind (this, function () {
             layout_state.x = layout_state.newline_goal_column;
             layout_state.y += layout_state.row_height + this._rowSpacing;
             layout_state.row_height = 0;
-        };
+        });
 
         for (let i = 0; i < this._items.length; i++) {
             let item = this._items[i];
@@ -117,8 +117,6 @@ JournalLayout.prototype = {
             box.y2 = box.y1 + item_layout.height;
 
             item.allocate (box, flags);
-
-            log ("_computeLayout(): item spacing is " + this._itemSpacing);
 
             layout_state.x += item_layout.width + this._itemSpacing;
             if (item_layout.height > layout_state.row_height)
