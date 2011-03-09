@@ -3,6 +3,9 @@
 // Style classes used here:
 //
 // journal - The main journal layout
+//     item-spacing - Horizontal space between items in the journal view
+//     row-spacing - Vertical space between rows in the journal view
+//
 // journal-heading - Heading labels for date blocks inside the jorunal
 
 const Clutter = imports.gi.Clutter;
