@@ -275,3 +275,14 @@ JournalDisplay.prototype = {
     }
 
 };
+
+// TODO
+//
+// * Redo get-preferred-* properly
+//
+// * Set the scroll adjustment when recomputing the layout
+// 
+// * Sort events when we get them
+// 
+// * Go through the list of sorted events, adding HeadingItems as appropriate
+//   when an item falls on a different day from the last.
