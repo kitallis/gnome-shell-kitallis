@@ -62,6 +62,11 @@ JournalLayout.prototype = {
         this._items.push (item);
         this._container.add_actor (item.actor);
     },
+    
+    clear: function () {
+        this._items = [];
+        this._container.destroy_children ();
+    },
 
     _styleChanged: function () {
         log ("JournalLayout: _styleChanged()");
@@ -228,20 +233,27 @@ function JournalDisplay () {
 
 JournalDisplay.prototype = {
     _init: function () {
-        this._layout = new JournalLayout ();
         this._scroll_view = new St.ScrollView ({ x_fill: true,
                                                  y_fill: false,
 					         y_align: St.Align.START,
 					         vfade: true });
 	this.actor = this._scroll_view;
 
+        this._layout = new JournalLayout ();
         this._scroll_view.add_actor (this._layout.actor);
-        this._scroll_view.set_policy (Gtk.PolicyType.NEVER, Gtk.PolicyType.ALWAYS);
 
-        this._get_events ();
+        this._scroll_view.set_policy (Gtk.PolicyType.NEVER, Gtk.PolicyType.ALWAYS);
+        this._scroll_view.connect ("notify::mapped", Lang.bind (this, this._scrollViewMapCb));
     },
 
-    _get_events: function () {
+    _scrollViewMapCb: function (actor) {
+        if (this._scroll_view.mapped)
+            this._reload ();
+    },
+    
+    _reload : function () {
+        this._layout.clear ();
+
         let subject = new Zeitgeist.Subject ("file://*", "", "", "", "", "", "");
         let event = new Zeitgeist.Event("", "", "", [subject], []);
 
