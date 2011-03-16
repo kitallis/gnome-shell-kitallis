@@ -208,6 +208,18 @@ HeadingItem.prototype = {
 };
 
 
+//*** Utility functions
+
+function _compareEventsByTimestamp (a, b) {
+    if (a.timestamp < b.timestamp)
+        return -1;
+    else if (b.timestamp > a.timestamp)
+        return 1;
+    else
+        return 0;
+}
+
+
 //*** JournalDisplay ***
 
 function JournalDisplay () {
