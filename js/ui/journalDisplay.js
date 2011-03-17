@@ -18,6 +18,7 @@ const St = imports.gi.St;
 const Mainloop = imports.mainloop;
 const Gettext = imports.gettext.domain('gnome-shell');
 const _ = Gettext.gettext;
+const C_ = Gettext.pgettext;
 
 const IconGrid = imports.ui.iconGrid;
 const Zeitgeist = imports.misc.zeitgeist;
@@ -256,6 +257,8 @@ JournalDisplay.prototype = {
 
         let subject = new Zeitgeist.Subject ("file://*", "", "", "", "", "", "");
         let event = new Zeitgeist.Event("", "", "", [subject], []);
+        
+        let last_timestamp = null;
 
         Zeitgeist.findEvents ([0, 9999999999999],                        // time_range
                               [event],                                   // event_templates
@@ -266,7 +269,31 @@ JournalDisplay.prototype = {
                                              log ("got " + events.length + " events");
                                              for (let i = 0; i < events.length; i++) {
                                                  let e = events[i];
+                                                 let d = new Date (e.timestamp / 1000);
+                                                 let need_date_change = false;
+
+                                                 if (!last_timestamp)
+                                                     need_date_change = true;
+                                                 else {
+                                                     let last_date = new Date (last_timestamp / 1000);
+                                                     
+                                                     if (!(last_date.getFullYear () == d.getFullYear ()
+                                                           && last_date.getMonth () == d.getMonth ()
+                                                           && last_date.getDate () == d.getDate ()))
+                                                         need_date_change = true;
+                                                 }
+
+                                                 last_timestamp = e.timestamp;
+                                                 
+                                                 if (need_date_change) {
+                                                     let label = d.toLocaleFormat (C_("journal heading date", "%a %Y/%b/%d"));
+                                                     let heading = new HeadingItem (label);
+                                                     log ("heading: " + label);
+                                                     this._layout.appendItem (heading);
+                                                 }
+
                                                  let item = new EventItem (e);
+                                                 log ("  event with timestamp " + d.toDateString() + " " + d.toTimeString ());
                                                  this._layout.appendItem (item);
                                              }
                                          }));
@@ -282,7 +309,4 @@ JournalDisplay.prototype = {
 //
 // * Set the scroll adjustment when recomputing the layout
 // 
-// * Sort events when we get them
-// 
-// * Go through the list of sorted events, adding HeadingItems as appropriate
-//   when an item falls on a different day from the last.
+// * Sort events when we get them (hmm, maybe Zeitgeist already does that for us)
