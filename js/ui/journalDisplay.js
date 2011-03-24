@@ -81,20 +81,28 @@ JournalLayout.prototype = {
 
     _allocate: function (actor, box, flags) {
         let width = box.x2 - box.x1;
-        this._computeLayout (width, flags);
+        this._computeLayout (width, true, flags);
     },
 
     _getPreferredWidth: function (actor, forHeight, alloc) {
-        alloc.min_size = 48; // FIXME: get the icon size from CSS
-        alloc.natural_size = 200; // FIXME
+        alloc.min_size = 128; // FIXME: get the icon size from CSS
+        alloc.natural_size = (48 + this._itemSpacing) * 4 - this._itemSpacing; // four horizontal icons and the spacing between them
     },
 
     _getPreferredHeight: function (actor, forWidth, alloc) {
-        alloc.min_size = 48; // FIXME: get the icon size from CSS - maybe this should be an icon's worth plus a heading's?
-        alloc.natural_size = 200; // FIXME
+        alloc.min_size = 128; // FIXME: get the icon size from CSS - maybe this should be an icon's worth plus a heading's?
+        alloc.natural_size = this._computeLayout (forWidth, false, null);
     },
 
-    _computeLayout: function (available_width, flags) {
+    // Computes the layout of the items in the journal, based on the available_width.
+    //
+    // do_allocation is a boolean: if false, only the layout will be computed; 
+    // if true, the layout will be computed and the items in the journal will
+    // be allocated as well by calling their item.allocate() method.  The former
+    // is for doing size requisition; the latter is for doing size allocation.
+    //
+    // Returns: an integer with the resulting height after layout
+    _computeLayout: function (available_width, do_allocation, allocate_flags) {
         let layout_state = { newline_goal_column: 0,
                              x: 0,
                              y: 0,
@@ -122,7 +130,8 @@ JournalLayout.prototype = {
             box.x2 = box.x1 + item_layout.width;
             box.y2 = box.y1 + item_layout.height;
 
-            item.allocate (box, flags);
+            if (do_allocation)
+                item.allocate (box, allocate_flags);
 
             layout_state.x += item_layout.width + this._itemSpacing;
             if (item_layout.height > layout_state.row_height)
@@ -132,6 +141,8 @@ JournalLayout.prototype = {
                 newline ();
             }
         }
+        
+        return layout_state.y + layout_state.row_height;
     }
 
 };
