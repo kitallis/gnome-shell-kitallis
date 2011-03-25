@@ -63,7 +63,7 @@ JournalLayout.prototype = {
         this._items.push (item);
         this._container.add_actor (item.actor);
     },
-    
+
     clear: function () {
         this._items = [];
         this._container.destroy_children ();
@@ -90,13 +90,15 @@ JournalLayout.prototype = {
     },
 
     _getPreferredHeight: function (actor, forWidth, alloc) {
-        alloc.min_size = 128; // FIXME: get the icon size from CSS - maybe this should be an icon's worth plus a heading's?
-        alloc.natural_size = this._computeLayout (forWidth, false, null);
+        let height = this._computeLayout (forWidth, false, null);
+
+        alloc.min_size = height;
+        alloc.natural_size = height;
     },
 
     // Computes the layout of the items in the journal, based on the available_width.
     //
-    // do_allocation is a boolean: if false, only the layout will be computed; 
+    // do_allocation is a boolean: if false, only the layout will be computed;
     // if true, the layout will be computed and the items in the journal will
     // be allocated as well by calling their item.allocate() method.  The former
     // is for doing size requisition; the latter is for doing size allocation.
@@ -141,7 +143,7 @@ JournalLayout.prototype = {
                 newline ();
             }
         }
-        
+
         return layout_state.y + layout_state.row_height;
     }
 
@@ -254,7 +256,7 @@ JournalDisplay.prototype = {
         this._layout = new JournalLayout ();
         this._scroll_view.add_actor (this._layout.actor);
 
-        this._scroll_view.set_policy (Gtk.PolicyType.NEVER, Gtk.PolicyType.ALWAYS);
+        this._scroll_view.set_policy (Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
         this._scroll_view.connect ("notify::mapped", Lang.bind (this, this._scrollViewMapCb));
     },
 
@@ -262,13 +264,13 @@ JournalDisplay.prototype = {
         if (this._scroll_view.mapped)
             this._reload ();
     },
-    
+
     _reload : function () {
         this._layout.clear ();
 
         let subject = new Zeitgeist.Subject ("file://*", "", "", "", "", "", "");
         let event = new Zeitgeist.Event("", "", "", [subject], []);
-        
+
         let last_timestamp = null;
 
         Zeitgeist.findEvents ([0, 9999999999999],                        // time_range
@@ -287,7 +289,7 @@ JournalDisplay.prototype = {
                                                      need_date_change = true;
                                                  else {
                                                      let last_date = new Date (last_timestamp / 1000);
-                                                     
+
                                                      if (!(last_date.getFullYear () == d.getFullYear ()
                                                            && last_date.getMonth () == d.getMonth ()
                                                            && last_date.getDate () == d.getDate ()))
@@ -295,7 +297,7 @@ JournalDisplay.prototype = {
                                                  }
 
                                                  last_timestamp = e.timestamp;
-                                                 
+
                                                  if (need_date_change) {
                                                      let label = d.toLocaleFormat (C_("journal heading date", "%a %Y/%b/%d"));
                                                      let heading = new HeadingItem (label);
@@ -316,8 +318,4 @@ JournalDisplay.prototype = {
 
 // TODO
 //
-// * Redo get-preferred-* properly
-//
-// * Set the scroll adjustment when recomputing the layout
-// 
 // * Sort events when we get them (hmm, maybe Zeitgeist already does that for us)
