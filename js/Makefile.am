@@ -8,6 +8,7 @@ nobase_dist_js_DATA = 	\
 	misc/format.js		\
 	misc/gnomeSession.js	\
 	misc/history.js		\
+	misc/modemManager.js	\
 	misc/params.js		\
 	misc/semantic.js	\
 	misc/util.js		\
@@ -52,6 +53,7 @@ nobase_dist_js_DATA = 	\
 	ui/statusMenu.js	\
 	ui/status/accessibility.js	\
 	ui/status/keyboard.js	\
+	ui/status/network.js	\
 	ui/status/power.js	\
 	ui/status/volume.js	\
 	ui/status/bluetooth.js	\
