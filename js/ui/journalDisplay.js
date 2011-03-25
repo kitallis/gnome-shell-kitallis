@@ -318,4 +318,15 @@ JournalDisplay.prototype = {
 
 // TODO
 //
+// * Put filenames below icons
+//
+// * Make icons reactive; single-click or right-click to get a Largo-like set of actions; double-click to launch
+//
+// * Style up the day headings; they are thin and small and black right now
+//
 // * Sort events when we get them (hmm, maybe Zeitgeist already does that for us)
+//
+// * isearch like in Emacs
+//
+// * Big Fat Eraser mode, like in gnome-activity-journal
+//
