@@ -7,6 +7,9 @@
 //     row-spacing - Vertical space between rows in the journal view
 //
 // journal-heading - Heading labels for date blocks inside the jorunal
+//
+// .journal-heading .overview-icon - Icons in the journal, used to represent files/documents/etc.
+// You can style "icon-size", "font-size", etc. in them; they are IconGrid.BaseIcon composite actors.
 
 const Clutter = imports.gi.Clutter;
 const GLib = imports.gi.GLib;
@@ -165,7 +168,13 @@ EventItem.prototype = {
             throw new Error ("event must not be null");
 
         this._item_info = new DocInfo.ZeitgeistItemInfo (event);
-        this.actor = this._item_info.createIcon (128); // FIXME: fetch the icon size from the theme's CSS
+        this._icon = new IconGrid.BaseIcon (this._item_info.name, 
+                                            { createIcon: Lang.bind (this, function (size) {
+                                                  return this._item_info.createIcon (size);
+                                              })
+                                            });
+        this.actor = this._icon.actor;
+
         // FIXME: we are generating the icon synchronously.  Do it async.
     },
 
@@ -173,13 +182,8 @@ EventItem.prototype = {
         let min_w, nat_w;
         let min_h, nat_h;
 
-        if (this.actor) {
-            [min_w, nat_w] = this.actor.get_preferred_width (-1);
-            [min_h, nat_h] = this.actor.get_preferred_height (-1);
-        } else {
-            [min_w, nat_w] = [0, 0];
-            [min_h, nat_h] = [0, 0];
-        }
+        [min_w, nat_w] = this.actor.get_preferred_width (-1);
+        [min_h, nat_h] = this.actor.get_preferred_height (-1);
 
         return { width: nat_w,
                  height: nat_h,
