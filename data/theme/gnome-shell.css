@@ -1621,6 +1621,18 @@ StTooltip StLabel {
 /* Journal */
 
 .journal {
-    item-spacing: 12px;
-    row-spacing: 12px;
+    item-spacing: 24px;
+    row-spacing: 24px;
+    color: white;
+}
+
+.journal .overview-icon {
+    icon-size: 128px;
+    font-size: 8pt;
+}
+
+.journal-heading {
+    font-size: 12pt;
+    font-weight: bold;
+    text-shadow: black 0px 2px 2px;
 }
