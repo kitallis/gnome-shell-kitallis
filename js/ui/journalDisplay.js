@@ -8,8 +8,9 @@
 //
 // journal-heading - Heading labels for date blocks inside the jorunal
 //
-// .journal-heading .overview-icon - Icons in the journal, used to represent files/documents/etc.
-// You can style "icon-size", "font-size", etc. in them; they are IconGrid.BaseIcon composite actors.
+// .journal-item .overview-icon - Items in the journal, used to represent files/documents/etc.
+// You can style "icon-size", "font-size", etc. in them; the hierarchy for each item is
+// is StButton -> IconGrid.BaseIcon
 
 const Clutter = imports.gi.Clutter;
 const GLib = imports.gi.GLib;
@@ -173,9 +174,15 @@ EventItem.prototype = {
                                                   return this._item_info.createIcon (size);
                                               })
                                             });
-        this.actor = this._icon.actor;
-
-        // FIXME: we are generating the icon synchronously.  Do it async.
+        this._button = new St.Button ({ style_class: "journal-item",
+                                        reactive: true,
+                                        button_mask: St.ButtonMask.ONE | St.ButtonMask.TWO,
+                                        can_focus: true,
+                                        x_fill: true,
+                                        y_fill: true });
+        this.actor = this._button;
+        
+        this._button.set_child (this._icon.actor);
     },
 
     getLayout: function () {

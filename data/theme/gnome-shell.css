@@ -1634,9 +1634,25 @@ StTooltip StLabel {
     color: white;
 }
 
-.journal .overview-icon {
+.journal-item {
+    /* copied from app-well-app */
+    border-radius: 4px;
+    padding: 3px;
+    border: 1px rgba(0,0,0,0);
+    font-size: 7.5pt;
+    color: white;
+    transition-duration: 100;
+    text-align: center;
+}
+
+.journal-item .overview-icon {
     icon-size: 128px;
-    font-size: 8pt;
+}
+
+.journal-item:hover {
+    background-color: rgba(255,255,255,0.1);
+    text-shadow: black 0px 2px 2px;
+    transition-duration: 100;
 }
 
 .journal-heading {
