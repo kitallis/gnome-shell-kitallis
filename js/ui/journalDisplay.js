@@ -169,7 +169,7 @@ EventItem.prototype = {
             throw new Error ("event must not be null");
 
         this._item_info = new DocInfo.ZeitgeistItemInfo (event);
-        this._icon = new IconGrid.BaseIcon (this._item_info.name, 
+        this._icon = new IconGrid.BaseIcon (this._item_info.name,
                                             { createIcon: Lang.bind (this, function (size) {
                                                   return this._item_info.createIcon (size);
                                               })
@@ -181,7 +181,7 @@ EventItem.prototype = {
                                         x_fill: true,
                                         y_fill: true });
         this.actor = this._button;
-        
+
         this._button.set_child (this._icon.actor);
     },
 
@@ -293,13 +293,13 @@ JournalDisplay.prototype = {
                                              log ("got " + events.length + " events");
                                              for (let i = 0; i < events.length; i++) {
                                                  let e = events[i];
-                                                 let d = new Date (e.timestamp / 1000);
+                                                 let d = new Date (e.timestamp);
                                                  let need_date_change = false;
 
                                                  if (!last_timestamp)
                                                      need_date_change = true;
                                                  else {
-                                                     let last_date = new Date (last_timestamp / 1000);
+                                                     let last_date = new Date (last_timestamp);
 
                                                      if (!(last_date.getFullYear () == d.getFullYear ()
                                                            && last_date.getMonth () == d.getMonth ()
@@ -317,7 +317,7 @@ JournalDisplay.prototype = {
                                                  }
 
                                                  let item = new EventItem (e);
-                                                 log ("  event with timestamp " + d.toDateString() + " " + d.toTimeString ());
+                                                 log ("  event with timestamp " + e.timestamp + " - " + d.toDateString() + " " + d.toTimeString ());
                                                  this._layout.appendItem (item);
                                              }
                                          }));
