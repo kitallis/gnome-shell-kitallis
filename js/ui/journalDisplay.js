@@ -37,7 +37,7 @@ function JournalLayout () {
 
 JournalLayout.prototype = {
     _init: function () {
-        this._items = [];
+        this._items = []; // array of { type: "item" / "newline" / "hspace", child: item }
         this._container = new Shell.GenericContainer ({ style_class: 'journal' });
 
         this._container.connect ("style-changed", Lang.bind (this, this._styleChanged));
@@ -57,6 +57,7 @@ JournalLayout.prototype = {
         this._container.connect ("get-preferred-height", Lang.bind (this, this._getPreferredHeight));
     },
 
+    // We only expect items to have an item.actor field, which is a ClutterActor
     appendItem: function (item) {
         if (!item)
             throw new Error ("item must not be null");
@@ -64,8 +65,21 @@ JournalLayout.prototype = {
         if (!item.actor)
             throw new Error ("Item must already contain an actor when added to the JournalLayout");
 
-        this._items.push (item);
+        let i = { type: "item",
+                  child: item };
+
+        this._items.push (i);
         this._container.add_actor (item.actor);
+    },
+
+    appendNewline: function () {
+        let i = { type: "newline" }
+        this._items.push (i);
+    },
+
+    appendHSpace: function () {
+        let i = { type: "hspace" };
+        this._items.push (i);
     },
 
     clear: function () {
@@ -123,11 +137,26 @@ JournalLayout.prototype = {
 
         for (let i = 0; i < this._items.length; i++) {
             let item = this._items[i];
-            let item_layout = item.getLayout ();
+            let item_layout = { width: 0, height: 0 };
 
-            if (item_layout.needs_newline_before
-                || (layout_state.x + item_layout.width > layout_state.layout_width)) {
+            if (item.type == "item") {
+                if (!item.child)
+                    throw new Error ("internal error - item.child must not be null");
+
+                item_layout.width = item.child.actor.get_preferred_width (-1)[1]; // [0] is minimum width; [1] is natural width
+                item_layout.height = item.child.actor.get_preferred_height (item_layout.width)[1];
+            } else if (item.type == "newline") {
                 newline ();
+                continue;
+            } else if (item.type == "hspace") {
+                item_layout.width = this._itemSpacing;
+            }
+
+            if (layout_state.x + item_layout.width > layout_state.layout_width) {
+                newline ();
+
+                if (item.type == "hspace")
+                    continue;
             }
 
             let box = new Clutter.ActorBox ();
@@ -136,16 +165,12 @@ JournalLayout.prototype = {
             box.x2 = box.x1 + item_layout.width;
             box.y2 = box.y1 + item_layout.height;
 
-            if (do_allocation)
-                item.allocate (box, allocate_flags);
+            if (item.type == "item" && do_allocation)
+                item.child.actor.allocate (box, allocate_flags);
 
-            layout_state.x += item_layout.width + this._itemSpacing;
+            layout_state.x += item_layout.width;
             if (item_layout.height > layout_state.row_height)
                 layout_state.row_height = item_layout.height;
-
-            if (item_layout.needs_newline_after) {
-                newline ();
-            }
         }
 
         return layout_state.y + layout_state.row_height;
@@ -183,26 +208,6 @@ EventItem.prototype = {
         this.actor = this._button;
 
         this._button.set_child (this._icon.actor);
-    },
-
-    getLayout: function () {
-        let min_w, nat_w;
-        let min_h, nat_h;
-
-        [min_w, nat_w] = this.actor.get_preferred_width (-1);
-        [min_h, nat_h] = this.actor.get_preferred_height (-1);
-
-        return { width: nat_w,
-                 height: nat_h,
-                 needs_newline_before: false,
-                 needs_newline_after: false };
-    },
-
-    allocate: function (box, flags) {
-        if (!this.actor)
-            return;
-
-        this.actor.allocate (box, flags);
     }
 };
 
@@ -221,19 +226,6 @@ HeadingItem.prototype = {
         this._label_text = label_text;
         this.actor = new St.Label ({ text: label_text,
                                      style_class: 'journal-heading' });
-    },
-
-    getLayout: function () {
-        let [min_w, nat_w] = this.actor.get_preferred_width (-1);
-        let [min_h, nat_h] = this.actor.get_preferred_height (-1);
-        return { width: nat_w,
-                 height: nat_h,
-                 needs_newline_before: true,
-                 needs_newline_after: true };
-    },
-
-    allocate: function (box, flags) {
-        this.actor.allocate (box, flags);
     }
 };
 
@@ -307,18 +299,24 @@ JournalDisplay.prototype = {
                                                          need_date_change = true;
                                                  }
 
-                                                 last_timestamp = e.timestamp;
-
                                                  if (need_date_change) {
                                                      let label = d.toLocaleFormat (C_("journal heading date", "%a %Y/%b/%d"));
                                                      let heading = new HeadingItem (label);
                                                      log ("heading: " + label);
+
+                                                     if (last_timestamp)
+                                                         this._layout.appendNewline (); // i.e. only if this is not the *first* heading in the journal
+
                                                      this._layout.appendItem (heading);
+                                                     this._layout.appendNewline ();
                                                  }
+
+                                                 last_timestamp = e.timestamp;
 
                                                  let item = new EventItem (e);
                                                  log ("  event with timestamp " + e.timestamp + " - " + d.toDateString() + " " + d.toTimeString ());
                                                  this._layout.appendItem (item);
+                                                 this._layout.appendHSpace ();
                                              }
                                          }));
 
