@@ -1,16 +1,24 @@
 /* -*- mode: js2; js2-basic-offset: 4; indent-tabs-mode: nil -*- */
 
-// Style classes used here:
-//
-// journal - The main journal layout
-//     item-spacing - Horizontal space between items in the journal view
-//     row-spacing - Vertical space between rows in the journal view
-//
-// journal-heading - Heading labels for date blocks inside the jorunal
-//
-// .journal-item .overview-icon - Items in the journal, used to represent files/documents/etc.
-// You can style "icon-size", "font-size", etc. in them; the hierarchy for each item is
-// is StButton -> IconGrid.BaseIcon
+/* JournalDisplay object to show a timeline of the user's past activities
+ *
+ * This file exports a JournalDisplay object, which carries a JournalDisplay.actor.
+ * This is a view of the user's past activities, shown as a timeline, and
+ * whose data comes from what is logged in the Zeitgeist service.
+ */
+
+/* Style classes used here:
+ *
+ * journal - The main journal layout
+ *     item-spacing - Horizontal space between items in the journal view
+ *     row-spacing - Vertical space between rows in the journal view
+ *
+ * journal-heading - Heading labels for date blocks inside the journal
+ *
+ * .journal-item .overview-icon - Items in the journal, used to represent files/documents/etc.
+ * You can style "icon-size", "font-size", etc. in them; the hierarchy for each item is
+ * is StButton -> IconGrid.BaseIcon
+ */
 
 const Clutter = imports.gi.Clutter;
 const GLib = imports.gi.GLib;
@@ -30,6 +38,32 @@ const DocInfo = imports.misc.docInfo;
 
 
 //*** JournalLayout ***
+//
+// This is a dumb "flow" layout - it doesn't implement behavior on its own; rather,
+// it just lays out items as specified by the caller, and leaves all the behavior
+// of those items up to the caller itself.
+//
+// JournalLayout lets you build a layout like this:
+//
+//    Heading2
+//
+//    [item]  [item]  [item]
+//    [longitem]  [item]  [item]
+//
+//    Heading2
+//
+//    [item]  [item]
+//
+// It does this with just three methods:
+//
+//   - appendItem (item) - Expects an item.actor - just inserts that actor into the layout.
+//
+//   - appendHSpace () - Adds a horizontal space after the last item.  The amount of
+//     space comes from the "item-spacing" CSS attribute within the "journal" style class.
+//
+//   - appendNewline () - Adds a newline after the last item, and moves the layout cursor
+//     to the leftmost column in the view.  The vertical space between rows comes from
+//     the "row-spacing" CSS attribute within the "journal" style class.
 
 function JournalLayout () {
     this._init ();
@@ -243,6 +277,16 @@ function _compareEventsByTimestamp (a, b) {
 
 
 //*** JournalDisplay ***
+//
+// This carries a JournalDisplay.actor, for a timeline view of the user's past activities.
+//
+// Each time the JournalDisplay's actor is mapped, the journal will reload itself
+// by querying Zeitgeist for the latest events.  In effect, this means that the user
+// gets an updated view every time accesses the journal from the shell.
+//
+// So far we don't need to install a live monitor on Zeitgeist; the assumption is that
+// if you are in the shell's journal, you cannot interact with your apps anyway and 
+// thus you cannot create any new Zeitgeist events just yet.
 
 function JournalDisplay () {
     this._init ();
