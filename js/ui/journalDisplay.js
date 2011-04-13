@@ -32,9 +32,10 @@ const Gettext = imports.gettext.domain('gnome-shell');
 const _ = Gettext.gettext;
 const C_ = Gettext.pgettext;
 
-const IconGrid = imports.ui.iconGrid;
-const Zeitgeist = imports.misc.zeitgeist;
 const DocInfo = imports.misc.docInfo;
+const IconGrid = imports.ui.iconGrid;
+const Main = imports.ui.main;
+const Zeitgeist = imports.misc.zeitgeist;
 
 
 //*** JournalLayout ***
@@ -235,13 +236,23 @@ EventItem.prototype = {
                                             });
         this._button = new St.Button ({ style_class: "journal-item",
                                         reactive: true,
-                                        button_mask: St.ButtonMask.ONE | St.ButtonMask.TWO,
+                                        button_mask: St.ButtonMask.ONE | St.ButtonMask.THREE, // assume button 2 (middle) does nothing
                                         can_focus: true,
                                         x_fill: true,
                                         y_fill: true });
+        this._button.connect ("clicked", Lang.bind (this, this._buttonClicked));
         this.actor = this._button;
 
         this._button.set_child (this._icon.actor);
+    },
+
+    // callback for this._button's "clicked" signal
+    _buttonClicked: function () {
+        // FIXME: here we should use double-click for launching immediately with the default application,
+        // and single-click with buttons 1 or 3 to bring up a popup menu with actions.  See the TODO
+        // list at the bottom of this file for details.
+        this._item_info.launch ();
+        Main.overview.hide ();
     }
 };
 
@@ -285,7 +296,7 @@ function _compareEventsByTimestamp (a, b) {
 // gets an updated view every time accesses the journal from the shell.
 //
 // So far we don't need to install a live monitor on Zeitgeist; the assumption is that
-// if you are in the shell's journal, you cannot interact with your apps anyway and 
+// if you are in the shell's journal, you cannot interact with your apps anyway and
 // thus you cannot create any new Zeitgeist events just yet.
 
 function JournalDisplay () {
@@ -372,6 +383,11 @@ JournalDisplay.prototype = {
 // TODO
 //
 // * Make icons reactive; single-click or right-click to get a Largo-like set of actions; double-click to launch
+//     Open with...
+//     Show in file manager
+//     --------------------
+//     Remove from journal
+//     Move to trash
 //
 // * Sort events when we get them (hmm, maybe Zeitgeist already does that for us)
 //

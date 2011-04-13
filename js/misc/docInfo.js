@@ -1,5 +1,6 @@
 /* -*- mode: js2; js2-basic-offset: 4; indent-tabs-mode: nil -*- */
 
+const Gio = imports.gi.Gio;
 const St = imports.gi.St;
 const Search = imports.ui.search;
 
