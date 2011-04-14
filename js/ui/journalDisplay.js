@@ -32,6 +32,7 @@ const Gettext = imports.gettext.domain('gnome-shell');
 const _ = Gettext.gettext;
 const C_ = Gettext.pgettext;
 
+const Calendar = imports.ui.calendar;
 const DocInfo = imports.misc.docInfo;
 const IconGrid = imports.ui.iconGrid;
 const Main = imports.ui.main;
@@ -287,6 +288,119 @@ function _compareEventsByTimestamp (a, b) {
 }
 
 
+//*** LayoutByTimeBuckets ***
+//
+// This takes events as delivered by a Zeitgeist query, and lays them out in a
+// JournalLayout as a timeline:  newer events first, older events last.
+// Events appear grouped by "Today", "Yesterday", "Last Week", etc.
+
+function LayoutByTimeBuckets () {
+    this._init ();
+}
+
+// A time bucket is a half-open interval [start, end)
+function _makeTimeBucket (_name, _start, _end) {
+    let bucket = { name: _name,
+               start: _start,
+               end: _end };
+    return bucket;
+}
+
+LayoutByTimeBuckets.prototype = {
+    _init: function () {
+        this.time_buckets = [ ];
+        this.layout_done = false;
+    },
+
+    _pushTimeBucket: function (name, start, end) {
+        if (this.time_buckets.length == 0)
+            this.time_buckets.push (_makeTimeBucket (name, start, end));
+        else {
+            if (end != -1)
+                throw new Error ("start timestamp must be -1 when pushing time buckets except for the first one");
+
+            let num_buckets = this.time_buckets.length;
+
+            let oldest_start = this.time_buckets [num_buckets - 1].start;
+            if (start >= oldest_start)
+                throw new Error ("start timestamp must be earlier than the previously-pushed timestamp");
+
+            this.time_buckets.push (_makeTimeBucket (name, start, oldest_start));
+        }
+    },
+
+    _setupTimeBuckets: function () {
+        let now = new Date();
+        let tomorrow = now.getTime () + 86400 * 1000;
+        let tomorrow_start = Calendar._getBeginningOfDay (new Date (tomorrow));
+
+        this._pushTimeBucket (_("Future"), tomorrow_start.getTime (), 9999999999999);
+
+        let today_start = Calendar._getBeginningOfDay (now);
+        this._pushTimeBucket (_("Today"), today_start.getTime (), -1);
+
+        let yesterday = now.getTime () - 86400 * 1000;
+        let yesterday_start = Calendar._getBeginningOfDay (new Date (yesterday));
+        this._pushTimeBucket (_("Yesterday"), yesterday_start.getTime (), -1);
+
+        let last_week = now.getTime () - 7 * 86400 * 1000;
+        let last_week_start = Calendar._getBeginningOfDay (new Date (last_week));
+        this._pushTimeBucket (_("Last week"), last_week_start.getTime (), -1);
+
+        this._pushTimeBucket (_("Older"), 0, -1);
+    },
+
+    _findBucketIndexForTimestamp: function (t) {
+        for (let i = 0; i < this.time_buckets.length; i++) {
+            let b = this.time_buckets[i];
+
+            if (b.start <= t && t < b.end)
+                return i;
+        }
+
+        return -1;
+    },
+
+    // Takes an array of events, straight from a Zeitgeist query callback, and
+    // lays them out in the specified JournalLayout.
+    layoutEvents: function (events, journal_layout) {
+        if (this.layout_done)
+            throw new Error ("LayoutByTimeBuckets.layoutEvents() may only be called once; create a new LayoutByTimeBuckets to do a new layout");
+
+        this._setupTimeBuckets ();
+
+        let old_bucket_index = -1;
+
+        for (let i = 0; i < events.length; i++) {
+            let e = events[i];
+            let t = e.timestamp;
+
+            let bucket_index = this._findBucketIndexForTimestamp (t);
+            if (bucket_index == -1)
+                throw new Error ("No time bucket was found for timestamp " + t);
+
+            if (old_bucket_index != bucket_index) {
+                if (old_bucket_index != -1)
+                    journal_layout.appendNewline (); // i.e. only if this is not the *first* heading in the journal
+
+                let heading = new HeadingItem (this.time_buckets[bucket_index].name);
+
+                journal_layout.appendItem (heading);
+                journal_layout.appendNewline ();
+
+                old_bucket_index = bucket_index;
+            }
+
+            let item = new EventItem (e);
+            journal_layout.appendItem (item);
+            journal_layout.appendHSpace ();
+        }
+
+        this.layout_done = true;
+    }
+};
+
+
 //*** JournalDisplay ***
 //
 // This carries a JournalDisplay.actor, for a timeline view of the user's past activities.
@@ -337,6 +451,9 @@ JournalDisplay.prototype = {
                               0,                                         // num_events - 0 for "as many as you can"
                               Zeitgeist.ResultType.MOST_RECENT_SUBJECTS, // result_type
                               Lang.bind (this, function (events) {
+                                             let l = new LayoutByTimeBuckets ();
+                                             l.layoutEvents (events, this._layout);
+/*
                                              log ("got " + events.length + " events");
                                              for (let i = 0; i < events.length; i++) {
                                                  let e = events[i];
@@ -373,8 +490,8 @@ JournalDisplay.prototype = {
                                                  this._layout.appendItem (item);
                                                  this._layout.appendHSpace ();
                                              }
+*/
                                          }));
-
 
     }
 
