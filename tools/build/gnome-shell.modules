@@ -3,8 +3,6 @@
 <?xml-stylesheet type="text/xsl" href="moduleset.xsl"?>
 <!-- vim:set ts=2 expandtab: -->
 <moduleset>
-  <repository type="git" name="git.clutter-project.org"
-      href="http://git.clutter-project.org/"/>
   <repository type="git" name="git.gnome.org"
       href="git://git.gnome.org/"/>
   <repository type="git" name="git.moblin.org"
@@ -13,9 +11,6 @@
       href="http://cairographics.org/"/>
   <repository type="tarball" name="0pointer.de"
       href="http://0pointer.de/lennart/projects/"/>
-  <repository type="cvs" name="libxklavier.freedesktop.org"
-      cvsroot=":pserver:anoncvs@anoncvs.freedesktop.org:/cvs/xklavier"
-      password=""/>
   <repository type="git" name="git.freedesktop.org"
       href="git://anongit.freedesktop.org"/>
 
@@ -115,7 +110,7 @@
   </autotools>
 
   <autotools id="clutter">
-    <branch repo="git.clutter-project.org" module="clutter" revision="clutter-1.6"/>
+    <branch repo="git.gnome.org" module="clutter" revision="clutter-1.6"/>
     <dependencies>
         <dep package="json-glib"/>
         <dep package="gobject-introspection"/>
@@ -206,6 +201,7 @@
     <branch repo="git.gnome.org" module="glib-networking"/>
     <dependencies>
      <dep package="glib"/>
+     <dep package="gsettings-desktop-schemas"/>
     </dependencies>
   </autotools>
 
@@ -227,6 +223,7 @@
     <branch repo="git.gnome.org" module="libgweather"/>
     <dependencies>
      <dep package="libsoup"/>
+     <dep package="gconf"/>
      <dep package="gtk3"/>
     </dependencies>
   </autotools>
@@ -370,12 +367,14 @@
     </dependencies>
   </autotools>
 
-<autotools id="libxklavier">
-  <branch module="libxklavier"
-	  repo="libxklavier.freedesktop.org"/>
+  <tarball id="libxklavier" supports-non-srcdir-builds="no" version="5.1">
+    <source href="http://download.gnome.org/sources/libxklavier/5.1/libxklavier-5.1.tar.bz2"
+            hash="sha256:1d7e8a6ed842d415d2f95b827e7d04ecf515ed5be2aaee262a8dd1c5cbe10ff1"
+            md5sum="cbc2a760827c20aef61eb7b18a6ce598"
+            size="346858"/>
     <dependencies>
       <dep package="glib"/>
     </dependencies>
-</autotools>
+  </tarball>
 
 </moduleset>
