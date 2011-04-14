@@ -401,6 +401,61 @@ LayoutByTimeBuckets.prototype = {
 };
 
 
+//*** LayoutByDays ***
+//
+// This takes events as delivered by a Zeitgeist query, and lays them out in a
+// JournalLayout as a timeline:  newer events first, older events last.
+// Events appear grouped by individual days.
+
+function LayoutByDays () {
+    this._init ();
+}
+
+LayoutByDays.prototype = {
+    _init: function () {
+    },
+
+    layoutEvents: function (events, journal_layout) {
+        let last_timestamp = null;
+
+        for (let i = 0; i < events.length; i++) {
+            let e = events[i];
+            let d = new Date (e.timestamp);
+            let need_date_change = false;
+
+            if (!last_timestamp)
+                need_date_change = true;
+            else {
+                let last_date = new Date (last_timestamp);
+
+                if (!(last_date.getFullYear () == d.getFullYear ()
+                      && last_date.getMonth () == d.getMonth ()
+                      && last_date.getDate () == d.getDate ()))
+                    need_date_change = true;
+            }
+
+            if (need_date_change) {
+                let label = d.toLocaleFormat (C_("journal heading date", "%a %Y/%b/%d"));
+                let heading = new HeadingItem (label);
+                log ("heading: " + label);
+
+                if (last_timestamp)
+                    journal_layout.appendNewline (); // i.e. only if this is not the *first* heading in the journal
+
+                journal_layout.appendItem (heading);
+                journal_layout.appendNewline ();
+            }
+
+            last_timestamp = e.timestamp;
+
+            let item = new EventItem (e);
+            journal_layout.appendItem (item);
+            journal_layout.appendHSpace ();
+        }
+    }
+};
+
+
 //*** JournalDisplay ***
 //
 // This carries a JournalDisplay.actor, for a timeline view of the user's past activities.
@@ -443,54 +498,15 @@ JournalDisplay.prototype = {
         let subject = new Zeitgeist.Subject ("file://*", "", "", "", "", "", "");
         let event = new Zeitgeist.Event("", "", "", [subject], []);
 
-        let last_timestamp = null;
-
         Zeitgeist.findEvents ([0, 9999999999999],                        // time_range
                               [event],                                   // event_templates
                               Zeitgeist.StorageState.ANY,                // storage_state - FIXME: should we use AVAILABLE instead?
                               0,                                         // num_events - 0 for "as many as you can"
                               Zeitgeist.ResultType.MOST_RECENT_SUBJECTS, // result_type
                               Lang.bind (this, function (events) {
-                                             let l = new LayoutByTimeBuckets ();
+//                                             let l = new LayoutByTimeBuckets ();
+                                             let l = new LayoutByDays ();
                                              l.layoutEvents (events, this._layout);
-/*
-                                             log ("got " + events.length + " events");
-                                             for (let i = 0; i < events.length; i++) {
-                                                 let e = events[i];
-                                                 let d = new Date (e.timestamp);
-                                                 let need_date_change = false;
-
-                                                 if (!last_timestamp)
-                                                     need_date_change = true;
-                                                 else {
-                                                     let last_date = new Date (last_timestamp);
-
-                                                     if (!(last_date.getFullYear () == d.getFullYear ()
-                                                           && last_date.getMonth () == d.getMonth ()
-                                                           && last_date.getDate () == d.getDate ()))
-                                                         need_date_change = true;
-                                                 }
-
-                                                 if (need_date_change) {
-                                                     let label = d.toLocaleFormat (C_("journal heading date", "%a %Y/%b/%d"));
-                                                     let heading = new HeadingItem (label);
-                                                     log ("heading: " + label);
-
-                                                     if (last_timestamp)
-                                                         this._layout.appendNewline (); // i.e. only if this is not the *first* heading in the journal
-
-                                                     this._layout.appendItem (heading);
-                                                     this._layout.appendNewline ();
-                                                 }
-
-                                                 last_timestamp = e.timestamp;
-
-                                                 let item = new EventItem (e);
-                                                 log ("  event with timestamp " + e.timestamp + " - " + d.toDateString() + " " + d.toTimeString ());
-                                                 this._layout.appendItem (item);
-                                                 this._layout.appendHSpace ();
-                                             }
-*/
                                          }));
 
     }
