@@ -456,6 +456,91 @@ LayoutByDays.prototype = {
 };
 
 
+//*** Filter ***
+//
+// A Filter provides an event template for a Zeitgeist query, a result
+// type (e.g. how results are ordered), and a human-readable name for the filter
+// so that it can be picked in the journal display.
+
+function Filter (name) {
+    this._init (name);
+}
+
+Filter.prototype = {
+    _init: function (name) {
+        this.name = name;
+        this.event_template = null;
+        this.result_type = Zeitgeist.ResultType.MOST_RECENT_SUBJECTS;
+    }
+};
+
+function _makeEmptySubject () {
+    return new Zeitgeist.Subject ("", "", "", "", "", "", ""); // uri, interpretation, manifestation, origin, mimetype, text, storage
+}
+
+function _makeEmptyEventTemplate () {
+    let subject = _makeEmptySubject ();
+    return new Zeitgeist.Event ("", "", "", [subject], []); // interpretation, manifestation, actor, subjects, payload
+}
+
+function EverythingFilter () {
+    this._init ();
+}
+
+EverythingFilter.prototype = {
+    __proto__: Filter.prototype,
+
+    _init: function () {
+        Filter.prototype._init.call(this, _("Everything"));
+        this.event_template = _makeEmptyEventTemplate ();
+    }
+};
+
+function NewFilter () {
+    this._init ();
+}
+
+NewFilter.prototype = {
+    __proto__: Filter.prototype,
+
+    _init: function () {
+        Filter.prototype._init.call(this, _("Newly-created items"));
+        let subject = _makeEmptySubject ();
+        this.event_template = new Zeitgeist.Event (
+            "http://www.zeitgeist-project.com/ontologies/2010/01/27/zg#CreateEvent", // interpretation
+            "", "", [subject], []); // manifestation, actor, subjects, payload
+    },
+};
+
+function FrequentFilter () {
+    this._init ();
+}
+
+FrequentFilter.prototype = {
+    __proto__: Filter.prototype,
+
+    _init: function() {
+        Filter.prototype._init.call(this, _("Frequently-used items"));
+        this.event_template = _makeEmptyEventTemplate ();
+        this.sorting = Zeitgeist.ResultType.MOST_POPULAR_SUBJECTS;
+    },
+};
+
+function FavoritesFilter () {
+    this._init ();
+}
+
+FavoritesFilter.prototype = {
+    __proto__: Filter.prototype,
+
+    _init: function () {
+        Filter.prototype._init.call(this, _("Favorites"));
+        let subject = new Zeitgeist.Subject ("bookmark://", "", "", "", "", "", ""); // uri, interpretation, manifestation, origin, mimetype, text, storage
+        this.event_template =  new Zeitgeist.Event("", "", "", [subject], []); // interpretation, manifestation, actor, subjects, payload
+    },
+};
+
+
 //*** JournalDisplay ***
 //
 // This carries a JournalDisplay.actor, for a timeline view of the user's past activities.
@@ -474,17 +559,28 @@ function JournalDisplay () {
 
 JournalDisplay.prototype = {
     _init: function () {
+        this._box = new St.BoxLayout ({ vertical: false,
+                                        style_class: 'all-app' });
+	this.actor = this._box;
+
         this._scroll_view = new St.ScrollView ({ x_fill: true,
-                                                 y_fill: false,
+                                                 y_fill: true,
 					         y_align: St.Align.START,
 					         vfade: true });
-	this.actor = this._scroll_view;
+
+        this._currentFilter = null;
+        this._filter_box = new St.BoxLayout({ vertical: true, reactive: true });
+
+        this._box.add (this._scroll_view, { expand: true, y_fill: true, y_align: St.Align.START });
+        this._box.add (this._filter_box, { expand: false, y_fill: false, y_align: St.Align.START });
 
         this._layout = new JournalLayout ();
         this._scroll_view.add_actor (this._layout.actor);
 
         this._scroll_view.set_policy (Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
         this._scroll_view.connect ("notify::mapped", Lang.bind (this, this._scrollViewMapCb));
+
+        this._setupFilters ();
     },
 
     _scrollViewMapCb: function (actor) {
@@ -492,23 +588,59 @@ JournalDisplay.prototype = {
             this._reload ();
     },
 
+    _selectFilter: function (filter) {
+        // Note that filter.button got added in ::_addFilter(); it's not an intrinsic property of the Filter prototype
+
+        for (let i = 0; i < this._filters.length; i++) {
+            if (this._filters[i] == filter)
+                filter.button.add_style_pseudo_class ("selected");
+            else
+                this._filters[i].button.remove_style_pseudo_class ("selected");
+        }
+
+        this._currentFilter = filter;
+        this._reload ();
+    },
+
+    _addFilter: function (filter) {
+        this._filters.push (filter);
+        filter.button = new St.Button ({ label: filter.name,
+                                         style_class: 'app-filter',
+                                         x_align: St.Align.START,
+                                         can_focus: true });
+        this._filter_box.add (filter.button, { expand: false, x_fill: false, y_fill: false });
+
+        filter.button.connect ("clicked", Lang.bind (this, function () {
+                this._selectFilter (filter);
+        }));
+    },
+
+    _setupFilters: function () {
+        this._filters = [];
+        
+        let everything = new EverythingFilter ();
+
+        this._addFilter (everything);
+        this._addFilter (new NewFilter ());
+        this._addFilter (new FrequentFilter ());
+        this._addFilter (new FavoritesFilter ());
+        
+        this._selectFilter (everything);
+    },
+
     _reload : function () {
         this._layout.clear ();
 
-        let subject = new Zeitgeist.Subject ("file://*", "", "", "", "", "", "");
-        let event = new Zeitgeist.Event("", "", "", [subject], []);
-
         Zeitgeist.findEvents ([0, 9999999999999],                        // time_range
-                              [event],                                   // event_templates
+                              [this._currentFilter.event_template],      // event_templates
                               Zeitgeist.StorageState.ANY,                // storage_state - FIXME: should we use AVAILABLE instead?
                               0,                                         // num_events - 0 for "as many as you can"
-                              Zeitgeist.ResultType.MOST_RECENT_SUBJECTS, // result_type
+                              this._currentFilter.result_type,           // result_type
                               Lang.bind (this, function (events) {
 //                                             let l = new LayoutByTimeBuckets ();
                                              let l = new LayoutByDays ();
                                              l.layoutEvents (events, this._layout);
                                          }));
-
     }
 
 };
