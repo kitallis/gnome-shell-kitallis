@@ -22,6 +22,7 @@
 
 const Clutter = imports.gi.Clutter;
 const GLib = imports.gi.GLib;
+const Gio = imports.gi.Gio;
 const Gtk = imports.gi.Gtk;
 const Shell = imports.gi.Shell;
 const Lang = imports.lang;
@@ -32,11 +33,14 @@ const Gettext = imports.gettext.domain('gnome-shell');
 const _ = Gettext.gettext;
 const C_ = Gettext.pgettext;
 
+const FileUtils = imports.misc.fileUtils;
 const Calendar = imports.ui.calendar;
 const DocInfo = imports.misc.docInfo;
 const IconGrid = imports.ui.iconGrid;
+const PopupMenu = imports.ui.popupMenu;
 const Main = imports.ui.main;
 const Zeitgeist = imports.misc.zeitgeist;
+const Util = imports.misc.util;
 
 
 //*** JournalLayout ***
@@ -245,15 +249,171 @@ EventItem.prototype = {
         this.actor = this._button;
 
         this._button.set_child (this._icon.actor);
+
+        this._menu = null;
+        this._menuManager = new PopupMenu.PopupMenuManager(this);
+    },
+
+    _removeMenuTimeout: function() {
+        if (this._menuTimeoutId > 0) {
+            Mainloop.source_remove(this._menuTimeoutId);
+            this._menuTimeoutId = 0;
+        }
     },
 
     // callback for this._button's "clicked" signal
-    _buttonClicked: function () {
+    _buttonClicked: function (actor, button) {
         // FIXME: here we should use double-click for launching immediately with the default application,
         // and single-click with buttons 1 or 3 to bring up a popup menu with actions.  See the TODO
         // list at the bottom of this file for details.
-        this._item_info.launch ();
+		this._removeMenuTimeout();
+		if (button == 1) {
+		  this._item_info.launch ();
+		} else if (button == 3) {
+		  this.popupMenu();
+		  return true;
+		}
         Main.overview.hide ();
+    },
+
+    popupMenu: function() {
+        this._removeMenuTimeout();
+        this.actor.fake_release();
+
+        if (!this._menu) {
+            this._menu = new ActivityIconMenu(this);
+            this._menu.connect('activate-window', Lang.bind(this, function (menu, window) {
+                this.activateWindow(window);
+            }));
+            this._menu.connect('popup', Lang.bind(this, function (menu, isPoppedUp) {
+                if (!isPoppedUp)
+                    this._onMenuPoppedDown();
+            }));
+            Main.overview.connect('hiding', Lang.bind(this, function () { this._menu.close(); }));
+
+            this._menuManager.addMenu(this._menu);
+        }
+
+        this.actor.set_hover(true);
+        this.actor.show_tooltip();
+        this._menu.popup();
+
+        return false;
+    },
+
+    activateWindow: function(metaWindow) {
+        if (metaWindow) {
+            Main.activateWindow(metaWindow);
+        } else {
+            Main.overview.hide();
+        }
+    },
+
+    _onMenuPoppedDown: function() {
+        this.actor.sync_hover();
+    },
+
+};
+
+
+//*** ActivityIconMenu ***
+//
+//
+//
+function ActivityIconMenu(source) {
+    this._init(source);
+}
+
+ActivityIconMenu.prototype = {
+    __proto__: PopupMenu.PopupMenu.prototype,
+
+    _init: function(source) {
+        let side = St.Side.LEFT;
+        if (St.Widget.get_default_direction() == St.TextDirection.RTL)
+            side = St.Side.RIGHT;
+
+        PopupMenu.PopupMenu.prototype._init.call(this, source.actor, 0.5, side, 0);
+
+        // We want to keep the item hovered while the menu is up
+        this.blockSourceEvents = true;
+
+        this._source = source;
+
+        this.connect('activate', Lang.bind(this, this._onActivate));
+        this.connect('open-state-changed', Lang.bind(this, this._onOpenStateChanged));
+
+        this.actor.add_style_class_name('app-well-menu');
+
+        // Chain our visibility and lifecycle to that of the source
+        source.actor.connect('notify::mapped', Lang.bind(this, function () {
+            if (!source.actor.mapped)
+                this.close();
+        }));
+        source.actor.connect('destroy', Lang.bind(this, function () { this.actor.destroy(); }));
+
+        Main.uiGroup.add_actor(this.actor);
+    },
+
+    _redisplay: function() {
+        this.removeAll();
+		this._openItemWith = this._appendMenuItem(_("Open with..."));
+        this._showItemInManager = this._appendMenuItem(_("Show in file manager"));
+        this._appendSeparator();
+        this._removeItemFromJournal = this._appendMenuItem(_("Remove from journal"));
+        this._moveFileToTrash = this._appendMenuItem(_("Move to trash"));
+	},
+
+    _appendSeparator: function () {
+        let separator = new PopupMenu.PopupSeparatorMenuItem();
+        this.addMenuItem(separator);
+    },
+
+    _appendMenuItem: function(labelText) {
+        // FIXME: app-well-menu-item style
+        let item = new PopupMenu.PopupMenuItem(labelText);
+        this.addMenuItem(item);
+        return item;
+    },
+
+    popup: function(activatingButton) {
+        this._redisplay();
+        this.open();
+    },
+
+    _onOpenStateChanged: function (menu, open) {
+        if (open) {
+            this.emit('popup', true);
+        } else {
+            this.emit('popup', false);
+        }
+    },
+
+    _onActivate: function (actor, child) {
+        if (child._window) {
+            let metaWindow = child._window;
+            this.emit('activate-window', metaWindow);
+        } else if (child == this._openItemWith) {
+			log("Item: " + this._source._item_info.event.id);
+		} else if (child == this._showItemInManager) {
+			Util.spawn(['nautilus', this._source._item_info.subject.origin]);
+			Main.overview.hide();
+        } else if (child == this._removeItemFromJournal) {
+			log("Removing item: " + this._source._item_info.event.id);
+			Zeitgeist.deleteEvents([parseInt(this._source._item_info.event.id)]);	
+		} else if (child == this._moveFileToTrash) {
+			// remove the item from journal after trashing, it'll be recuperated
+			// as a new event by the Trash filter
+			let uri = this._source._item_info.subject.uri;
+			log("The uri is: " + uri);
+			try {
+			  let file = Gio.file_new_for_uri(uri);
+			  file.trash(null);
+			} catch(e) {
+			  Util.spawn(['gvfs-trash', uri]);
+			}
+			Zeitgeist.deleteEvents([parseInt(this._source._item_info.event.id)]);	
+		}
+        this.close();
     }
 };
 
@@ -637,8 +797,8 @@ JournalDisplay.prototype = {
                               0,                                         // num_events - 0 for "as many as you can"
                               this._currentFilter.result_type,           // result_type
                               Lang.bind (this, function (events) {
-//                                             let l = new LayoutByTimeBuckets ();
-                                             let l = new LayoutByDays ();
+                                             let l = new LayoutByTimeBuckets ();
+                                             // let l = new LayoutByDays ();
                                              l.layoutEvents (events, this._layout);
                                          }));
     }
