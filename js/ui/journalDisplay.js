@@ -393,7 +393,6 @@ ActivityIconMenu.prototype = {
             let metaWindow = child._window;
             this.emit('activate-window', metaWindow);
         } else if (child == this._openItemWith) {
-			log("Item: " + this._source._item_info.event.id);
 		} else if (child == this._showItemInManager) {
 			Util.spawn(['nautilus', this._source._item_info.subject.origin]);
 			Main.overview.hide();
@@ -404,7 +403,7 @@ ActivityIconMenu.prototype = {
 			// remove the item from journal after trashing, it'll be recuperated
 			// as a new event by the Trash filter
 			let uri = this._source._item_info.subject.uri;
-			log("The uri is: " + uri);
+			log("Trashing file: " + uri);
 			try {
 			  let file = Gio.file_new_for_uri(uri);
 			  file.trash(null);
