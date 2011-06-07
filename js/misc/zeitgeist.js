@@ -220,6 +220,21 @@ function findEvents(timeRange, eventTemplates, storageState, numEvents, resultTy
                           storageState, numEvents, resultType, handler);
 }
 
+function findEventIds(timeRange, eventTemplates, storageState, numEvents, resultType, callback) {
+    function handler(results, error) {
+        if (error != null)
+            log("Error querying Zeitgeist for event IDs: "+error);
+        else
+            callback(results);
+    }
+    _log.FindEventIdsRemote(timeRange, eventTemplates.map(Event.toPlain),
+                          storageState, numEvents, resultType, handler);
+}
+
+function deleteEvents(eventIds) {
+    _log.DeleteEventsRemote(eventIds);
+}
+
 /* Zeitgeist Full-Text-Search Interface */
 
 const INDEX_NAME = 'org.gnome.zeitgeist.Engine';
