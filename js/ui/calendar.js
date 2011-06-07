@@ -345,6 +345,29 @@ DBusEventSource.prototype = {
 };
 Signals.addSignalMethods(DBusEventSource.prototype);
 
+// Week start day
+
+let _weekStart = NaN;
+
+function getWeekStart () {
+    // FIXME: This is actually the fallback method for GTK+ for the week start;
+    // GTK+ by preference uses nl_langinfo (NL_TIME_FIRST_WEEKDAY). We probably
+    // should add a C function so we can do the full handling.
+
+    if (isNaN (_weekStart)) {
+        let weekStartString = Gettext_gtk30.gettext('calendar:week_start:0');
+        if (weekStartString.indexOf('calendar:week_start:') == 0) {
+            _weekStart = parseInt(weekStartString.substring(20));
+        }
+
+        if (isNaN(_weekStart) || _weekStart < 0 || _weekStart > 6) {
+            log('Translation of "calendar:week_start:0" in GTK+ is not correct');
+            _weekStart = 0;
+        }
+    } else
+        return _weekStart;
+}
+
 // Calendar:
 // @eventSource: is an object implementing the EventSource API, e.g. the
 // requestRange(), getEvents(), hasEvents() methods and the ::changed signal.
@@ -361,26 +384,12 @@ Calendar.prototype = {
                                                            this._update(false);
                                                        }));
 
-        // FIXME: This is actually the fallback method for GTK+ for the week start;
-        // GTK+ by preference uses nl_langinfo (NL_TIME_FIRST_WEEKDAY). We probably
-        // should add a C function so we can do the full handling.
-        this._weekStart = NaN;
         this._weekdate = NaN;
         this._digitWidth = NaN;
         this._settings = new Gio.Settings({ schema: 'org.gnome.shell.calendar' });
 
         this._settings.connect('changed::' + SHOW_WEEKDATE_KEY, Lang.bind(this, this._onSettingsChange));
         this._useWeekdate = this._settings.get_boolean(SHOW_WEEKDATE_KEY);
-
-        let weekStartString = Gettext_gtk30.gettext('calendar:week_start:0');
-        if (weekStartString.indexOf('calendar:week_start:') == 0) {
-            this._weekStart = parseInt(weekStartString.substring(20));
-        }
-
-        if (isNaN(this._weekStart) || this._weekStart < 0 || this._weekStart > 6) {
-            log('Translation of "calendar:week_start:0" in GTK+ is not correct');
-            this._weekStart = 0;
-        }
 
         // Find the ordering for month/year in the calendar heading
         this._headerFormatWithoutYear = '%B';
@@ -460,7 +469,7 @@ Calendar.prototype = {
                                        text: customDayAbbrev });
             this.actor.add(label,
                            { row: 1,
-                             col: offsetCols + (7 + iter.getDay() - this._weekStart) % 7,
+                             col: offsetCols + (7 + iter.getDay() - getWeekStart()) % 7,
                              x_fill: false, x_align: St.Align.MIDDLE });
             iter.setTime(iter.getTime() + MSECS_IN_DAY);
         }
@@ -562,7 +571,7 @@ Calendar.prototype = {
         beginDate.setDate(1);
         beginDate.setSeconds(0);
         beginDate.setHours(12);
-        let daysToWeekStart = (7 + beginDate.getDay() - this._weekStart) % 7;
+        let daysToWeekStart = (7 + beginDate.getDay() - getWeekStart()) % 7;
         beginDate.setTime(beginDate.getTime() - daysToWeekStart * MSECS_IN_DAY);
 
         let iter = new Date(beginDate);
@@ -586,7 +595,7 @@ Calendar.prototype = {
             // Hack used in lieu of border-collapse - see gnome-shell.css
             if (row == 2)
                 styleClass = 'calendar-day-top ' + styleClass;
-            if (iter.getDay() == this._weekStart)
+            if (iter.getDay() == getWeekStart())
                 styleClass = 'calendar-day-left ' + styleClass;
 
             if (_sameDay(now, iter))
@@ -604,7 +613,7 @@ Calendar.prototype = {
 
             let offsetCols = this._useWeekdate ? 1 : 0;
             this.actor.add(button,
-                           { row: row, col: offsetCols + (7 + iter.getDay() - this._weekStart) % 7 });
+                           { row: row, col: offsetCols + (7 + iter.getDay() - getWeekStart()) % 7 });
 
             if (this._useWeekdate && iter.getDay() == 4) {
                 let label = new St.Label({ text: _getCalendarWeekForDate(iter).toString(),
@@ -614,7 +623,7 @@ Calendar.prototype = {
             }
 
             iter.setTime(iter.getTime() + MSECS_IN_DAY);
-            if (iter.getDay() == this._weekStart) {
+            if (iter.getDay() == getWeekStart()) {
                 // We stop on the first "first day of the week" after the month we are displaying
                 if (iter.getMonth() > this._selectedDate.getMonth() || iter.getYear() > this._selectedDate.getYear())
                     break;
@@ -641,17 +650,6 @@ EventsList.prototype = {
         this._eventSource.connect('changed', Lang.bind(this, this._update));
         this._desktopSettings = new Gio.Settings({ schema: 'org.gnome.desktop.interface' });
         this._desktopSettings.connect('changed', Lang.bind(this, this._update));
-        let weekStartString = Gettext_gtk30.gettext('calendar:week_start:0');
-        if (weekStartString.indexOf('calendar:week_start:') == 0) {
-            this._weekStart = parseInt(weekStartString.substring(20));
-        }
-
-        if (isNaN(this._weekStart) ||
-                  this._weekStart < 0 ||
-                  this._weekStart > 6) {
-            log('Translation of "calendar:week_start:0" in GTK+ is not correct');
-            this._weekStart = 0;
-        }
 
         this._update();
     },
@@ -736,13 +734,13 @@ EventsList.prototype = {
         let tomorrowEnd = new Date(dayEnd.getTime() + 86400 * 1000);
         this._addPeriod(_("Tomorrow"), tomorrowBegin, tomorrowEnd, false, true);
 
-        if (dayEnd.getDay() <= 4 + this._weekStart) {
+        if (dayEnd.getDay() <= 4 + getWeekStart()) {
             /* If now is within the first 5 days we show "This week" and
              * include events up until and including Saturday/Sunday
              * (depending on whether a week starts on Sunday/Monday).
              */
             let thisWeekBegin = new Date(dayBegin.getTime() + 2 * 86400 * 1000);
-            let thisWeekEnd = new Date(dayEnd.getTime() + (6 + this._weekStart - dayEnd.getDay()) * 86400 * 1000);
+            let thisWeekEnd = new Date(dayEnd.getTime() + (6 + getWeekStart() - dayEnd.getDay()) * 86400 * 1000);
             this._addPeriod(_("This week"), thisWeekBegin, thisWeekEnd, true, false);
         } else {
             /* otherwise it's one of the two last days of the week ... show
@@ -750,7 +748,7 @@ EventsList.prototype = {
              * Saturday/Sunday
              */
             let nextWeekBegin = new Date(dayBegin.getTime() + 2 * 86400 * 1000);
-            let nextWeekEnd = new Date(dayEnd.getTime() + (13 + this._weekStart - dayEnd.getDay()) * 86400 * 1000);
+            let nextWeekEnd = new Date(dayEnd.getTime() + (13 + getWeekStart() - dayEnd.getDay()) * 86400 * 1000);
             this._addPeriod(_("Next week"), nextWeekBegin, nextWeekEnd, true, false);
         }
     },

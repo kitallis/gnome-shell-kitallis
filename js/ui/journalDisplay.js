@@ -22,7 +22,6 @@
 
 const Clutter = imports.gi.Clutter;
 const GLib = imports.gi.GLib;
-const Gio = imports.gi.Gio;
 const Gtk = imports.gi.Gtk;
 const Shell = imports.gi.Shell;
 const Lang = imports.lang;
@@ -33,14 +32,12 @@ const Gettext = imports.gettext.domain('gnome-shell');
 const _ = Gettext.gettext;
 const C_ = Gettext.pgettext;
 
-const FileUtils = imports.misc.fileUtils;
 const Calendar = imports.ui.calendar;
 const DocInfo = imports.misc.docInfo;
 const IconGrid = imports.ui.iconGrid;
-const PopupMenu = imports.ui.popupMenu;
 const Main = imports.ui.main;
+const Semantic = imports.misc.semantic;
 const Zeitgeist = imports.misc.zeitgeist;
-const Util = imports.misc.util;
 
 
 //*** JournalLayout ***
@@ -113,7 +110,7 @@ JournalLayout.prototype = {
     },
 
     appendNewline: function () {
-        let i = { type: "newline" }
+        let i = { type: "newline" };
         this._items.push (i);
     },
 
@@ -249,170 +246,15 @@ EventItem.prototype = {
         this.actor = this._button;
 
         this._button.set_child (this._icon.actor);
-
-        this._menu = null;
-        this._menuManager = new PopupMenu.PopupMenuManager(this);
-    },
-
-    _removeMenuTimeout: function() {
-        if (this._menuTimeoutId > 0) {
-            Mainloop.source_remove(this._menuTimeoutId);
-            this._menuTimeoutId = 0;
-        }
     },
 
     // callback for this._button's "clicked" signal
-    _buttonClicked: function (actor, button) {
+    _buttonClicked: function () {
         // FIXME: here we should use double-click for launching immediately with the default application,
         // and single-click with buttons 1 or 3 to bring up a popup menu with actions.  See the TODO
         // list at the bottom of this file for details.
-		this._removeMenuTimeout();
-		if (button == 1) {
-		  this._item_info.launch ();
-		} else if (button == 3) {
-		  this.popupMenu();
-		  return true;
-		}
+        this._item_info.launch ();
         Main.overview.hide ();
-    },
-
-    popupMenu: function() {
-        this._removeMenuTimeout();
-        this.actor.fake_release();
-
-        if (!this._menu) {
-            this._menu = new ActivityIconMenu(this);
-            this._menu.connect('activate-window', Lang.bind(this, function (menu, window) {
-                this.activateWindow(window);
-            }));
-            this._menu.connect('popup', Lang.bind(this, function (menu, isPoppedUp) {
-                if (!isPoppedUp)
-                    this._onMenuPoppedDown();
-            }));
-            Main.overview.connect('hiding', Lang.bind(this, function () { this._menu.close(); }));
-
-            this._menuManager.addMenu(this._menu);
-        }
-
-        this.actor.set_hover(true);
-        this.actor.show_tooltip();
-        this._menu.popup();
-
-        return false;
-    },
-
-    activateWindow: function(metaWindow) {
-        if (metaWindow) {
-            Main.activateWindow(metaWindow);
-        } else {
-            Main.overview.hide();
-        }
-    },
-
-    _onMenuPoppedDown: function() {
-        this.actor.sync_hover();
-    },
-
-};
-
-
-//*** ActivityIconMenu ***
-//
-//
-//
-function ActivityIconMenu(source) {
-    this._init(source);
-}
-
-ActivityIconMenu.prototype = {
-    __proto__: PopupMenu.PopupMenu.prototype,
-
-    _init: function(source) {
-        let side = St.Side.LEFT;
-        if (St.Widget.get_default_direction() == St.TextDirection.RTL)
-            side = St.Side.RIGHT;
-
-        PopupMenu.PopupMenu.prototype._init.call(this, source.actor, 0.5, side, 0);
-
-        // We want to keep the item hovered while the menu is up
-        this.blockSourceEvents = true;
-
-        this._source = source;
-
-        this.connect('activate', Lang.bind(this, this._onActivate));
-        this.connect('open-state-changed', Lang.bind(this, this._onOpenStateChanged));
-
-        this.actor.add_style_class_name('app-well-menu');
-
-        // Chain our visibility and lifecycle to that of the source
-        source.actor.connect('notify::mapped', Lang.bind(this, function () {
-            if (!source.actor.mapped)
-                this.close();
-        }));
-        source.actor.connect('destroy', Lang.bind(this, function () { this.actor.destroy(); }));
-
-        Main.uiGroup.add_actor(this.actor);
-    },
-
-    _redisplay: function() {
-        this.removeAll();
-		this._openItemWith = this._appendMenuItem(_("Open with..."));
-        this._showItemInManager = this._appendMenuItem(_("Show in file manager"));
-        this._appendSeparator();
-        this._removeItemFromJournal = this._appendMenuItem(_("Remove from journal"));
-        this._moveFileToTrash = this._appendMenuItem(_("Move to trash"));
-	},
-
-    _appendSeparator: function () {
-        let separator = new PopupMenu.PopupSeparatorMenuItem();
-        this.addMenuItem(separator);
-    },
-
-    _appendMenuItem: function(labelText) {
-        // FIXME: app-well-menu-item style
-        let item = new PopupMenu.PopupMenuItem(labelText);
-        this.addMenuItem(item);
-        return item;
-    },
-
-    popup: function(activatingButton) {
-        this._redisplay();
-        this.open();
-    },
-
-    _onOpenStateChanged: function (menu, open) {
-        if (open) {
-            this.emit('popup', true);
-        } else {
-            this.emit('popup', false);
-        }
-    },
-
-    _onActivate: function (actor, child) {
-        if (child._window) {
-            let metaWindow = child._window;
-            this.emit('activate-window', metaWindow);
-        } else if (child == this._openItemWith) {
-		} else if (child == this._showItemInManager) {
-			Util.spawn(['nautilus', this._source._item_info.subject.origin]);
-			Main.overview.hide();
-        } else if (child == this._removeItemFromJournal) {
-			log("Removing item: " + this._source._item_info.event.id);
-			Zeitgeist.deleteEvents([parseInt(this._source._item_info.event.id)]);	
-		} else if (child == this._moveFileToTrash) {
-			// remove the item from journal after trashing, it'll be recuperated
-			// as a new event by the Trash filter
-			let uri = this._source._item_info.subject.uri;
-			log("Trashing file: " + uri);
-			try {
-			  let file = Gio.file_new_for_uri(uri);
-			  file.trash(null);
-			} catch(e) {
-			  Util.spawn(['gvfs-trash', uri]);
-			}
-			Zeitgeist.deleteEvents([parseInt(this._source._item_info.event.id)]);	
-		}
-        this.close();
     }
 };
 
@@ -447,6 +289,99 @@ function _compareEventsByTimestamp (a, b) {
 }
 
 
+//*** Time buckets ***
+//
+// Instead of showing a plain by-day timeline, we want to have a "gradient of proximity" in time,
+// where recent dates are shown with finer granularity than older dates.  So, we get this:
+//
+// Today
+// Yesterday
+// This week - from Sunday until today
+// Last week - from Sunday last week until Saturday last week
+// This month - from the 1st day of the month until "last week"
+// (this - 1) month
+// (this - 2) month
+//
+// That is, we go back in time in gradually bigger chunks, until we reach whole months.
+// For the case where "last week" is actually older than "this month" (i.e. where buckets
+// would overlap), we "cut" the oldest bucket so that it doesn't include the newest bucket.
+// In that case, "last month" would actually be from the 1st day of the month until just before
+// the beginning of "last week".
+
+// A time bucket is a half-open interval [start, end)
+function _makeTimeBucket (_name, _start, _end) {
+    let bucket = { name: _name,
+               start: _start,
+               end: _end };
+    return bucket;
+}
+
+function TimeBuckets () {
+    this._init ();
+}
+
+TimeBuckets.prototype = {
+    _init: function () {
+        this._buckets = [];
+        this._setupBuckets ();
+    },
+
+    getBuckets: function () {
+        return this._buckets;
+    },
+
+    _pushBucket: function (name, start, end) {
+        if (this._buckets.length == 0)
+            this._buckets.push (_makeTimeBucket (name, start, end));
+        else {
+            if (end != -1)
+                throw new Error ("end timestamp must be -1 when pushing time buckets except for the first one");
+
+            let num_buckets = this._buckets.length;
+
+            let oldest_start = this._buckets [num_buckets - 1].start;
+            if (start >= oldest_start)
+                return; // This lets us "cut off" a proposed bucket if it would already be included within the last bucket
+
+            this._buckets.push (_makeTimeBucket (name, start, oldest_start));
+        }
+    },
+
+    _setupBuckets: function () {
+        let now = new Date ();
+        let tm_now = now.getTime ();
+        let today_start = Calendar._getBeginningOfDay (now);
+        let tm_tomorrow = tm_now + 86400 * 1000;
+        let tomorrow_start = Calendar._getBeginningOfDay (new Date (tm_tomorrow));
+
+        this._pushBucket (_("Today"), today_start.getTime (), tomorrow_start.getTime ());
+
+        let tm_yesterday = tm_now - Calendar.MSECS_IN_DAY;
+        let yesterday_start = Calendar._getBeginningOfDay (new Date (tm_yesterday));
+        this._pushBucket (_("Yesterday"), yesterday_start.getTime (), -1);
+
+        let days_from_week_start = Calendar.getWeekStart () - yesterday_start.getDay ();
+        let tm_week_start = yesterday_start.getTime () - Calendar.MSECS_IN_DAY * days_from_week_start;
+        this._pushBucket (_("This week"), tm_week_start, -1);
+
+        let last_week_start = Calendar._getBeginningOfDay (new Date (tm_week_start - 7 * Calendar.MSECS_IN_DAY));
+        this._pushBucket (_("Last week"), last_week_start.getTime (), -1);
+
+        let this_month_start = new Date (last_week_start.getFullYear (),
+                                         last_week_start.getMonth (),
+                                         1);
+        this._pushBucket (_("This month"), this_month_start.getTime (), -1);
+
+        let tm_sometime_last_month = this_month_start.getTime () - Calendar.MSECS_IN_DAY;
+        let sometime_last_month = new Date (tm_sometime_last_month);
+        let last_month_start = new Date (sometime_last_month.getYear (),
+                                         sometime_last_month.getMonth (),
+                                         1);
+        this._pushBucket (_("Last month"), last_month_start.getTime (), -1);
+    }
+};
+
+
 //*** LayoutByTimeBuckets ***
 //
 // This takes events as delivered by a Zeitgeist query, and lays them out in a
@@ -457,56 +392,9 @@ function LayoutByTimeBuckets () {
     this._init ();
 }
 
-// A time bucket is a half-open interval [start, end)
-function _makeTimeBucket (_name, _start, _end) {
-    let bucket = { name: _name,
-               start: _start,
-               end: _end };
-    return bucket;
-}
-
 LayoutByTimeBuckets.prototype = {
     _init: function () {
-        this.time_buckets = [ ];
-        this.layout_done = false;
-    },
-
-    _pushTimeBucket: function (name, start, end) {
-        if (this.time_buckets.length == 0)
-            this.time_buckets.push (_makeTimeBucket (name, start, end));
-        else {
-            if (end != -1)
-                throw new Error ("start timestamp must be -1 when pushing time buckets except for the first one");
-
-            let num_buckets = this.time_buckets.length;
-
-            let oldest_start = this.time_buckets [num_buckets - 1].start;
-            if (start >= oldest_start)
-                throw new Error ("start timestamp must be earlier than the previously-pushed timestamp");
-
-            this.time_buckets.push (_makeTimeBucket (name, start, oldest_start));
-        }
-    },
-
-    _setupTimeBuckets: function () {
-        let now = new Date();
-        let tomorrow = now.getTime () + 86400 * 1000;
-        let tomorrow_start = Calendar._getBeginningOfDay (new Date (tomorrow));
-
-        this._pushTimeBucket (_("Future"), tomorrow_start.getTime (), 9999999999999);
-
-        let today_start = Calendar._getBeginningOfDay (now);
-        this._pushTimeBucket (_("Today"), today_start.getTime (), -1);
-
-        let yesterday = now.getTime () - 86400 * 1000;
-        let yesterday_start = Calendar._getBeginningOfDay (new Date (yesterday));
-        this._pushTimeBucket (_("Yesterday"), yesterday_start.getTime (), -1);
-
-        let last_week = now.getTime () - 7 * 86400 * 1000;
-        let last_week_start = Calendar._getBeginningOfDay (new Date (last_week));
-        this._pushTimeBucket (_("Last week"), last_week_start.getTime (), -1);
-
-        this._pushTimeBucket (_("Older"), 0, -1);
+        this.time_buckets = new TimeBuckets ().getBuckets ();
     },
 
     _findBucketIndexForTimestamp: function (t) {
@@ -523,11 +411,6 @@ LayoutByTimeBuckets.prototype = {
     // Takes an array of events, straight from a Zeitgeist query callback, and
     // lays them out in the specified JournalLayout.
     layoutEvents: function (events, journal_layout) {
-        if (this.layout_done)
-            throw new Error ("LayoutByTimeBuckets.layoutEvents() may only be called once; create a new LayoutByTimeBuckets to do a new layout");
-
-        this._setupTimeBuckets ();
-
         let old_bucket_index = -1;
 
         for (let i = 0; i < events.length; i++) {
@@ -554,8 +437,6 @@ LayoutByTimeBuckets.prototype = {
             journal_layout.appendItem (item);
             journal_layout.appendHSpace ();
         }
-
-        this.layout_done = true;
     }
 };
 
@@ -615,11 +496,37 @@ LayoutByDays.prototype = {
 };
 
 
+
+// filter -> queries
+// queries -> heading, query
+// query -> event template, result type, time range
+
+function Query (_name, _event_template, _result_type, _time_range, _max_events, _layout) {
+    this._init (_name, _event_template, _result_type, _time_range, _max_events, _layout);
+}
+
+Query.prototype = {
+    _init: function (_name, _event_template, _result_type, _time_range, _max_events, _layout) {
+        this.name = _name;
+        this.event_template = _event_template;
+        this.result_type = _result_type;
+        this.time_range = _time_range;
+        this.max_events = _max_events;
+        this.layout = _layout;
+    }
+};
+
+
+
+
+
 //*** Filter ***
 //
 // A Filter provides an event template for a Zeitgeist query, a result
 // type (e.g. how results are ordered), and a human-readable name for the filter
 // so that it can be picked in the journal display.
+
+let ALL_THE_TIME = [0, 9999999999999];
 
 function Filter (name) {
     this._init (name);
@@ -628,8 +535,7 @@ function Filter (name) {
 Filter.prototype = {
     _init: function (name) {
         this.name = name;
-        this.event_template = null;
-        this.result_type = Zeitgeist.ResultType.MOST_RECENT_SUBJECTS;
+        this.queries = null; // array of Query
     }
 };
 
@@ -651,7 +557,65 @@ EverythingFilter.prototype = {
 
     _init: function () {
         Filter.prototype._init.call(this, _("Everything"));
-        this.event_template = _makeEmptyEventTemplate ();
+        this.queries = [
+            new Query (null,
+                       _makeEmptyEventTemplate (),
+                       Zeitgeist.ResultType.MOST_RECENT_SUBJECTS,
+                       ALL_THE_TIME,
+                       30,
+                       new LayoutByTimeBuckets ())
+        ];
+    }
+};
+
+function EverythingByTypeFilter () {
+    this._init ();
+}
+
+function _makeEmptyEventTemplateWithInterpretation (interpretation) {
+    template = _makeEmptyEventTemplate ();
+    template.subjects[0].interpretation = interpretation;
+    return template;
+}
+
+function _makeQueryForInterpretation (name, interpretation) {
+    return new Query (name,
+                      _makeEmptyEventTemplateWithInterpretation (interpretation),
+                      Zeitgeist.ResultType.MOST_RECENT_SUBJECTS,
+                      ALL_THE_TIME,
+                      30,
+                      new LayoutByTimeBuckets ());
+}
+
+EverythingByTypeFilter.prototype = {
+    __proto__: Filter.prototype,
+
+    _init: function () {
+        Filter.prototype._init.call (this, _("Everything by type"));
+
+        this.queries = [
+            _makeQueryForInterpretation (_("Documents"), Semantic.NFO_DOCUMENT),
+            _makeQueryForInterpretation (_("Pictures"),  Semantic.NFO_IMAGE),
+            _makeQueryForInterpretation (_("Music"),     Semantic.NFO_AUDIO),
+            _makeQueryForInterpretation (_("Videos"),    Semantic.NFO_VIDEO),
+            // FIXME: add the "other" category
+        ];
+    }
+};
+
+function ByTypeFilter (name, interpretation) {
+    this._init (name, interpretation);
+}
+
+ByTypeFilter.prototype = {
+    __proto__: Filter.prototype,
+
+    _init: function (name, interpretation) {
+        Filter.prototype._init.call (this, name);
+
+        this.queries = [
+            _makeQueryForInterpretation (null, interpretation)
+        ];
     }
 };
 
@@ -664,11 +628,20 @@ NewFilter.prototype = {
 
     _init: function () {
         Filter.prototype._init.call(this, _("Newly-created items"));
-        let subject = _makeEmptySubject ();
-        this.event_template = new Zeitgeist.Event (
-            "http://www.zeitgeist-project.com/ontologies/2010/01/27/zg#CreateEvent", // interpretation
-            "", "", [subject], []); // manifestation, actor, subjects, payload
-    },
+
+        let event_template = new Zeitgeist.Event (
+                                 "http://www.zeitgeist-project.com/ontologies/2010/01/27/zg#CreateEvent", // interpretation
+                                 "", "", [_makeEmptySubject ()], []); // manifestation, actor, subjects, payload
+
+        this.queries = [
+            new Query (null,
+                       event_template,
+                       Zeitgeist.ResultType.MOST_RECENT_SUBJECTS,
+                       ALL_THE_TIME,
+                       30,
+                       new LayoutByTimeBuckets ())
+        ];
+    }
 };
 
 function FrequentFilter () {
@@ -680,8 +653,14 @@ FrequentFilter.prototype = {
 
     _init: function() {
         Filter.prototype._init.call(this, _("Frequently-used items"));
-        this.event_template = _makeEmptyEventTemplate ();
-        this.sorting = Zeitgeist.ResultType.MOST_POPULAR_SUBJECTS;
+        this.queries = [
+            new Query (null,
+                       _makeEmptyEventTemplate (),
+                       Zeitgeist.ResultType.MOST_POPULAR_SUBJECTS,
+                       ALL_THE_TIME,
+                       30,
+                       new LayoutByTimeBuckets ())
+        ];
     },
 };
 
@@ -694,8 +673,18 @@ FavoritesFilter.prototype = {
 
     _init: function () {
         Filter.prototype._init.call(this, _("Favorites"));
+
         let subject = new Zeitgeist.Subject ("bookmark://", "", "", "", "", "", ""); // uri, interpretation, manifestation, origin, mimetype, text, storage
-        this.event_template =  new Zeitgeist.Event("", "", "", [subject], []); // interpretation, manifestation, actor, subjects, payload
+        let event_template =  new Zeitgeist.Event("", "", "", [subject], []); // interpretation, manifestation, actor, subjects, payload
+
+        this.queries = [
+            new Query (null,
+                       event_template,
+                       Zeitgeist.ResultType.MOST_POPULAR_SUBJECTS,
+                       ALL_THE_TIME,
+                       0,
+                       new LayoutByTimeBuckets ())
+        ];
     },
 };
 
@@ -733,8 +722,7 @@ JournalDisplay.prototype = {
         this._box.add (this._scroll_view, { expand: true, y_fill: true, y_align: St.Align.START });
         this._box.add (this._filter_box, { expand: false, y_fill: false, y_align: St.Align.START });
 
-        this._layout = new JournalLayout ();
-        this._scroll_view.add_actor (this._layout.actor);
+        this._scrolled_box = null;
 
         this._scroll_view.set_policy (Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
         this._scroll_view.connect ("notify::mapped", Lang.bind (this, this._scrollViewMapCb));
@@ -776,32 +764,60 @@ JournalDisplay.prototype = {
 
     _setupFilters: function () {
         this._filters = [];
-        
+
         let everything = new EverythingFilter ();
 
         this._addFilter (everything);
+        this._addFilter (new EverythingByTypeFilter ());
         this._addFilter (new NewFilter ());
         this._addFilter (new FrequentFilter ());
         this._addFilter (new FavoritesFilter ());
-        
+
+        this._addFilter (new ByTypeFilter (_("Documents"), Semantic.NFO_DOCUMENT));
+        this._addFilter (new ByTypeFilter (_("Pictures"), Semantic.NFO_IMAGE));
+        this._addFilter (new ByTypeFilter (_("Music"), Semantic.NFO_AUDIO));
+        this._addFilter (new ByTypeFilter (_("Videos"), Semantic.NFO_VIDEO));
+        // FIXME: add the "other" category
+
         this._selectFilter (everything);
     },
 
     _reload : function () {
-        this._layout.clear ();
+        // Kill the _scrolled_box, so we kill all the existing result sections
 
-        Zeitgeist.findEvents ([0, 9999999999999],                        // time_range
-                              [this._currentFilter.event_template],      // event_templates
-                              Zeitgeist.StorageState.ANY,                // storage_state - FIXME: should we use AVAILABLE instead?
-                              0,                                         // num_events - 0 for "as many as you can"
-                              this._currentFilter.result_type,           // result_type
-                              Lang.bind (this, function (events) {
-                                             let l = new LayoutByTimeBuckets ();
-                                             // let l = new LayoutByDays ();
-                                             l.layoutEvents (events, this._layout);
-                                         }));
+        if (this._scrolled_box)
+            this._scrolled_box.destroy ();
+
+        this._scrolled_box = new St.BoxLayout ({ vertical: true,
+                                                 style_class: 'journal' });
+        this._scroll_view.add_actor (this._scrolled_box);
+
+        // For each query in the current filter, add a corresponding result section
+
+        for (let i = 0; i < this._currentFilter.queries.length; i++) {
+            let q = this._currentFilter.queries[i];
+
+            let journal_layout = new JournalLayout ();
+
+            if (q.name) {
+                journal_layout.appendItem (new HeadingItem (q.name)); // FIXME: style this differently
+                journal_layout.appendNewline ();
+            }
+
+            let callback = Lang.bind (this,
+                                      function (events) {
+                                          q.layout.layoutEvents (events, journal_layout);
+                                          this._scrolled_box.add (journal_layout.actor);
+                                      });
+
+            Zeitgeist.findEvents (q.time_range,
+                                  [q.event_template],
+                                  Zeitgeist.StorageState.ANY,                // storage_state - FIXME: should we use AVAILABLE instead?
+                                  q.max_events,
+                                  q.result_type,
+                                  callback);
+        }
     }
-
 };
 
 // TODO
@@ -819,3 +835,9 @@ JournalDisplay.prototype = {
 //
 // * Big Fat Eraser mode, like in gnome-activity-journal
 //
+
+// Each Query will generate a ResultSection
+//
+// Each ResultSection has a JournalLayout, which is populated by a LayoutBy*
+//
+// MAKE A DRAWING OF THIS - does it look pretty?
