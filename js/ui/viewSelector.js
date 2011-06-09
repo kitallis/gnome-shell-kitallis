@@ -530,7 +530,7 @@ ViewSelector.prototype = {
     _onStageKeyPress: function(actor, event) {
         let modifiers = Shell.get_event_state(event);
         let symbol = event.get_key_symbol();
-
+        
         if (symbol == Clutter.Escape) {
             Main.overview.hide();
             return true;

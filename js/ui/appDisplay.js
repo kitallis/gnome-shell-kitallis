@@ -539,7 +539,6 @@ AppWellIcon.prototype = {
     _onActivate: function (event) {
         this.emit('launching');
         let modifiers = Shell.get_event_state(event);
-
         if (modifiers & Clutter.ModifierType.CONTROL_MASK
             && this.app.state == Shell.AppState.RUNNING) {
             this.app.open_new_window(-1);

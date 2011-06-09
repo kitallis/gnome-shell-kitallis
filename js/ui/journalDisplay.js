@@ -86,7 +86,7 @@ JournalLayout.prototype = {
         // We pack the Shell.GenericContainer inside a box so that it will be scrollable.
         // Shell.GenericContainer doesn't implement the StScrollable interface,
         // but St.BoxLayout does.
-        let box = new St.BoxLayout({ vertical: true });
+        let box = new St.BoxLayout({ vertical: true, can_focus: true, reactive: true });
         box.add (this._container, { y_align: St.Align.START, expand: true });
 
         this.actor = box;
@@ -217,18 +217,48 @@ JournalLayout.prototype = {
 
 };
 
+
+function MultiSelect () {
+	this._init ();
+}
+
+MultiSelect.prototype = {
+	_init: function () {
+		this._elements = [];
+	},
+
+	select: function (source, item) {	
+		let e = { source : source,
+				item: item };
+		source.add_style_class_name('journal-item-selection');
+		this._elements.push(e);
+	},
+
+	unselect: function (source, item) {
+        let e = { source : source,
+                  item: item };
+		source.remove_style_class_name('journal-item-selection');
+		this._elements.pop(e);
+
+	},
+
+	querySelections: function () {
+		return this._elements;
+	}
+}	
+
 
 //*** EventItem ***
 //
 // This is an item that wraps a ZeitgeistItemInfo, which is in turn
 // created from an event as returned by the Zeitgeist D-Bus API.
 
-function EventItem (event) {
-    this._init (event);
+function EventItem (event, multiselect) {
+    this._init (event, multiselect);
 }
 
 EventItem.prototype = {
-    _init: function (event) {
+    _init: function (event, multiselect) {
         if (!event)
             throw new Error ("event must not be null");
 
@@ -240,21 +270,23 @@ EventItem.prototype = {
                                             });
         this._button = new St.Button ({ style_class: "journal-item",
                                         reactive: true,
+										can_focus: true,
                                         button_mask: St.ButtonMask.ONE | St.ButtonMask.THREE, // assume button 2 (middle) does nothing
-                                        can_focus: true,
                                         x_fill: true,
                                         y_fill: true });
         this._button.set_child (this._icon.actor);
 		this._button.connect ('clicked', Lang.bind(this, this._onButtonPress));
-	
+		
 		this._closeButton = new St.Button ({ style_class: "window-close" });
-		this._closeButton.connect ("clicked", Lang.bind(this, this._removeItem));
-		this._closeButton.connect('style-changed',
+		this._closeButton.connect ('clicked', Lang.bind(this, this._removeItem));
+		this._closeButton.connect ('style-changed',
 										 Lang.bind(this, this._onStyleChanged));
 
 		this._closeButton.hide();
 
 		this._idleToggleCloseId = 0;
+        this._menuTimeoutId = 0;
+		this._menuDown = 0;
 
 		this.actor = new St.Group ({ reactive: true });
 		this.actor.add_actor (this._button);
@@ -265,18 +297,38 @@ EventItem.prototype = {
 		this._menu = null;
         this._menuManager = new PopupMenu.PopupMenuManager(this);
 
+		this._multiSelect = multiselect;
+    },
+
+    _removeMenuTimeout: function() {
+        if (this._menuTimeoutId > 0) {
+            Mainloop.source_remove(this._menuTimeoutId);
+            this._menuTimeoutId = 0;
+        }
     },
 
     // callback for this._button's "clicked" signal
     _onButtonPress: function (actor, button) {
-        // FIXME: here we should use double-click for launching immediately with the default application,
-        // and single-click with buttons 1 or 3 to bring up a popup menu with actions.  See the TODO
-        // list at the bottom of this file for details.	  
+		this._removeMenuTimeout();
 		if (button == 1) {
-		  this._item_info.launch ();
-		  Main.overview.hide ();
+			let modifiers = Shell.get_event_state(Clutter.get_current_event ());
+			if (modifiers & Clutter.ModifierType.CONTROL_MASK) {
+				this._multiSelect.select (this._button, this._item_info);
+			} else {
+				let elements = this._multiSelect.querySelections ();
+				if (elements.length > 1) {
+					for (let i = 0; i < elements.length; i++) {
+						let e = elements[i];
+						e.item.launch ();
+					}
+				} else {
+					this._item_info.launch ();
+					Main.overview.hide ();
+				}
+			}
 		} else if (button == 3) {
-		  this._popupMenu();
+			this._popupMenu();
+			this._idleToggleCloseButton ();
 		}
 		return true;
     },
@@ -292,13 +344,15 @@ EventItem.prototype = {
 
     _idleToggleCloseButton: function() {
         this._idleToggleCloseId = 0;
-        if (!this._button.has_pointer &&
-            !this._closeButton.has_pointer)
+        if ((!this._button.has_pointer &&
+			  !this._closeButton.has_pointer) ||
+			  this._menu)
             this._closeButton.hide();
 
         return false;
     },
 
+	// FIXME: Calculate (X) positions.
 	_updatePosition: function () {
         let closeNode = this._closeButton.get_theme_node();
         this._closeButton._overlap = closeNode.get_length('-shell-close-overlap');
@@ -310,16 +364,8 @@ EventItem.prototype = {
 
     _removeItem: function (actor) {
 		this.actor.destroy ();
-		let subject = new Zeitgeist.Subject ("", "", "", "", "", this._item_info.name, "");
-		let event_template = new Zeitgeist.Event ("", "", "", [subject], "");
-		Zeitgeist.findEventIds([0, 9999999999999], 
-			  [event_template], 
-			  Zeitgeist.StorageState.ANY, 
-			  0, 
-			  0,
-			  Lang.bind (this, function (events) {
-				  Zeitgeist.deleteEvents(events);	
-              }));
+		_deleteEvents(this._item_info.name);
+		this._multiSelect.unselect (this._button, this._item_info);
     },
 
     _onStyleChanged: function () {
@@ -328,6 +374,7 @@ EventItem.prototype = {
     },
 
     _popupMenu: function() {
+        this._removeMenuTimeout();
         this._button.fake_release();
         if (!this._menu) {
             this._menu = new ActivityIconMenu(this);
@@ -407,8 +454,9 @@ ActivityIconMenu.prototype = {
     _redisplay: function() {
         this.removeAll();
 		this._openItemWith = this._appendMenuItem(_("Open with..."));
-        this._showItemInManager = this._appendMenuItem(_("Show in file manager"));
+		this._favoriteItem = this._appendMenuItem(_("Add to Favourites"));
         this._appendSeparator();
+        this._showItemInManager = this._appendMenuItem(_("Show in file manager"));
         this._moveFileToTrash = this._appendMenuItem(_("Move to trash"));
 	},
 
@@ -456,6 +504,8 @@ ActivityIconMenu.prototype = {
 			} catch(e) {
 			  Util.spawn(['gvfs-trash', uri]);
 			}
+			this._source.actor.destroy();
+			_deleteEvents(this._source._item_info.name);
 		}
         this.close();
     }
@@ -490,6 +540,20 @@ function _compareEventsByTimestamp (a, b) {
         return 1;
     else
         return 0;
+}
+
+function _deleteEvents(subject_text) {
+	let subject = new Zeitgeist.Subject ("", "", "", "", "", subject_text, "");
+	let event_template = new Zeitgeist.Event ("", "", "", [subject], "");
+	Zeitgeist.findEventIds([0, 9999999999999], 
+		  [event_template], 
+		  Zeitgeist.StorageState.ANY, 
+		  0, 
+		  0,
+		  Lang.bind (this, function (events) {
+			  Zeitgeist.deleteEvents(events);	
+          }));
+	return;
 }
 
 
@@ -616,8 +680,9 @@ LayoutByTimeBuckets.prototype = {
     // lays them out in the specified JournalLayout.
     layoutEvents: function (events, journal_layout) {
         let old_bucket_index = -1;
-
-        for (let i = 0; i < events.length; i++) {
+		let multiSelect = new MultiSelect (journal_layout);
+        
+		for (let i = 0; i < events.length; i++) {
             let e = events[i];
             let t = e.timestamp;
 
@@ -637,7 +702,7 @@ LayoutByTimeBuckets.prototype = {
                 old_bucket_index = bucket_index;
             }
 
-            let item = new EventItem (e);
+            let item = new EventItem (e, multiSelect);
             journal_layout.appendItem (item);
             journal_layout.appendHSpace ();
         }
