@@ -22,6 +22,7 @@
 
 const Clutter = imports.gi.Clutter;
 const GLib = imports.gi.GLib;
+const Gio = imports.gi.Gio;
 const Gtk = imports.gi.Gtk;
 const Shell = imports.gi.Shell;
 const Lang = imports.lang;
@@ -225,27 +226,118 @@ function MultiSelect () {
 MultiSelect.prototype = {
 	_init: function () {
 		this._elements = [];
+		this._multi_select = false;
 	},
 
-	select: function (source, item) {	
-		let e = { source : source,
-				item: item };
-		source.add_style_class_name('journal-item-selection');
-		this._elements.push(e);
+	select: function (source, item) {
+
+		if (this._elements.length == 0)
+			this._multi_select = true;
+		else
+			this._multi_select = false;
+
+		if (this._isSelected (source) || this._multi_select) {
+			let e = { source : source,
+					item: item,
+					selected: true };
+			source.add_style_class_name('journal-item-selection');
+			this._elements.push(e);
+		} else {
+			this.unselect (source, item);
+		}
 	},
 
 	unselect: function (source, item) {
         let e = { source : source,
-                  item: item };
+                  item: item,
+				  selected: false };
 		source.remove_style_class_name('journal-item-selection');
 		this._elements.pop(e);
+	},
 
+	_isSelected: function (source) {
+		for (let i = 0; i < this._elements.length; i++) {
+			let e = this._elements[i];
+			if ((e.source == source) && e.selected) {
+				return false;
+			}
+			else {
+				return true;
+			}
+		}
 	},
 
 	querySelections: function () {
 		return this._elements;
 	}
-}	
+}
+
+//*** FavoriteItem ***
+//
+// This takes an event item and adds it to a volatile Favorite item
+// list fetched from .gtk-bookmarks
+
+function FavoriteItem () {
+	this._init ();
+}
+
+FavoriteItem.prototype = {
+	
+	GTK_BOOKMARKS: '.gtk-bookmarks',
+
+	_init: function () {
+        this._bookmarksPath = GLib.build_filenamev([GLib.get_home_dir(), this.GTK_BOOKMARKS]);
+        this._bookmarksFile = Gio.file_new_for_path(this._bookmarksPath);
+
+        this._bookmarksToLabel = {};
+        this._bookmarksOrder = [];
+	},
+
+	// Code mostly taken from placeDisplay.js
+	loadBookmarks: function () {
+		this._bookmarks = [];
+
+        if (!GLib.file_test(this._bookmarksPath, GLib.FileTest.EXISTS))
+            return;
+
+        let [success, bookmarksContent, len] = GLib.file_get_contents(this._bookmarksPath);
+
+        if (!success)
+            return;
+
+        let bookmarks = bookmarksContent.split('\n');
+		
+		// ignore the last empty newline split
+        for (let i = 0; i < bookmarks.length - 1; i++) {
+            let bookmarkLine = bookmarks[i];
+            let components = bookmarkLine.split(' ');
+            let bookmark = components[0];
+            if (bookmark in this._bookmarksToLabel)
+                continue;
+            let label = null;
+            if (components.length > 1)
+                label = components.slice(1).join(' ');
+			let file = Gio.file_new_for_uri(bookmark);
+			if (file.query_file_type(0, null) == 2) {
+				continue;
+			} else {
+				this._bookmarksToLabel[bookmark] = label;
+				this._bookmarksOrder.push(bookmark);
+			}
+        }
+
+		// only returns an array of uris
+		// FIXME: handle labels in some manner
+		return this._bookmarksOrder;
+	},
+
+	append: function () {
+	},
+
+	deleteItemsWithUri: function () {
+	}	
+
+}
 
 
 //*** EventItem ***
@@ -356,10 +448,8 @@ EventItem.prototype = {
 	_updatePosition: function () {
         let closeNode = this._closeButton.get_theme_node();
         this._closeButton._overlap = closeNode.get_length('-shell-close-overlap');
-		//this._closeButton.x = this._button.width - (this._closeButton.width - this._closeButton._overlap);
-		//this._closeButton.y = this._button.height; - (this._closeButton.height + this._closeButton._overlap);
-		this._closeButton.x = this._button.width - (this._closeButton.width - 10);
-		this._closeButton.y = -15;
+		this._closeButton.x = this._button.width - (this._closeButton.width - 9);
+		this._closeButton.y = -12;
 	},
 
     _removeItem: function (actor) {
@@ -939,14 +1029,18 @@ FavoritesFilter.prototype = {
 
     _init: function () {
         Filter.prototype._init.call(this, _("Favorites"));
-
-        let subject = new Zeitgeist.Subject ("bookmark://", "", "", "", "", "", ""); // uri, interpretation, manifestation, origin, mimetype, text, storage
-        let event_template =  new Zeitgeist.Event("", "", "", [subject], []); // interpretation, manifestation, actor, subjects, payload
+		let favs = new FavoriteItem ();
+		let uris = favs.loadBookmarks ();
+		let event_template = [];
+		for (let i = 0; i < uris.length; i++) {
+			let subject = new Zeitgeist.Subject (uris[i], "", "", "", "", "", "");
+			event_template[i] = new Zeitgeist.Event ("", "", "", [subject], "");
+		}
 
         this.queries = [
             new Query (null,
                        event_template,
-                       Zeitgeist.ResultType.MOST_POPULAR_SUBJECTS,
+                       Zeitgeist.ResultType.MOST_RECENT_SUBJECTS,
                        ALL_THE_TIME,
                        0,
                        new LayoutByTimeBuckets ())
