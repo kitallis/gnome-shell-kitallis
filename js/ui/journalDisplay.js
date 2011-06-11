@@ -901,7 +901,8 @@ function _makeEmptySubject () {
 
 function _makeEmptyEventTemplate () {
     let subject = _makeEmptySubject ();
-    return new Zeitgeist.Event ("", "", "", [subject], []); // interpretation, manifestation, actor, subjects, payload
+	let event_template = new Zeitgeist.Event ("", "", "", [subject], []); // interpretation, manifestation, actor, subjects, payload
+    return [event_template];
 }
 
 function EverythingFilter () {
@@ -930,7 +931,7 @@ function EverythingByTypeFilter () {
 
 function _makeEmptyEventTemplateWithInterpretation (interpretation) {
     template = _makeEmptyEventTemplate ();
-    template.subjects[0].interpretation = interpretation;
+    template[0].subjects[0].interpretation = interpretation;
     return template;
 }
 
@@ -991,7 +992,7 @@ NewFilter.prototype = {
 
         this.queries = [
             new Query (null,
-                       event_template,
+                       [event_template],
                        Zeitgeist.ResultType.MOST_RECENT_SUBJECTS,
                        ALL_THE_TIME,
                        30,
@@ -1171,7 +1172,7 @@ JournalDisplay.prototype = {
                                       });
 
             Zeitgeist.findEvents (q.time_range,
-                                  [q.event_template],
+                                  q.event_template,
                                   Zeitgeist.StorageState.ANY,                // storage_state - FIXME: should we use AVAILABLE instead?
                                   q.max_events,
                                   q.result_type,
