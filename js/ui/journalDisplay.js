@@ -218,7 +218,7 @@ JournalLayout.prototype = {
 
 };
 
-
+// FIXME: DRY the code.
 function MultiSelect () {
 	this._init ();
 }
@@ -230,7 +230,6 @@ MultiSelect.prototype = {
 	},
 
 	select: function (source, item) {
-
 		if (this._elements.length == 0)
 			this._multi_select = true;
 		else
@@ -238,8 +237,8 @@ MultiSelect.prototype = {
 
 		if (this._isSelected (source) || this._multi_select) {
 			let e = { source : source,
-					item: item,
-					selected: true };
+					  item: item,
+					  selected: true };
 			source.add_style_class_name('journal-item-selection');
 			this._elements.push(e);
 		} else {
@@ -248,11 +247,13 @@ MultiSelect.prototype = {
 	},
 
 	unselect: function (source, item) {
-        let e = { source : source,
-                  item: item,
-				  selected: false };
-		source.remove_style_class_name('journal-item-selection');
-		this._elements.pop(e);
+		source.remove_style_class_name('journal-item-selection');	
+		for (let i = 0; i < this._elements.length; i++) {
+			if (this._elements[i].source == source) {
+				this._elements.splice(i, 1);
+				break;
+			}
+		}
 	},
 
 	_isSelected: function (source) {
@@ -261,10 +262,17 @@ MultiSelect.prototype = {
 			if ((e.source == source) && e.selected) {
 				return false;
 			}
-			else {
-				return true;
-			}
 		}
+		return true;
+	},
+
+	destroy: function() {
+	  let elements = this._elements;
+	  for (let i = 0; i < elements.length; i++) {
+		  let e = elements[i];
+		  e.source.remove_style_class_name('journal-item-selection');	
+	  }
+	  this._elements = [];
 	},
 
 	querySelections: function () {
@@ -277,6 +285,7 @@ MultiSelect.prototype = {
 // This takes an event item and adds it to a volatile Favorite item
 // list fetched from .gtk-bookmarks
 
+// FIXME: See above.
 function FavoriteItem () {
 	this._init ();
 }
@@ -289,13 +298,12 @@ FavoriteItem.prototype = {
         this._bookmarksPath = GLib.build_filenamev([GLib.get_home_dir(), this.GTK_BOOKMARKS]);
         this._bookmarksFile = Gio.file_new_for_path(this._bookmarksPath);
 
-        this._bookmarksToLabel = {};
-        this._bookmarksOrder = [];
+		this._loadBookmarks ();
 	},
 
-	// Code mostly taken from placeDisplay.js
-	loadBookmarks: function () {
-		this._bookmarks = [];
+	_loadBookmarks: function () {
+		let bookmarksToLabel = {};
+		let bookmarksOrder = [];
 
         if (!GLib.file_test(this._bookmarksPath, GLib.FileTest.EXISTS))
             return;
@@ -307,12 +315,11 @@ FavoriteItem.prototype = {
 
         let bookmarks = bookmarksContent.split('\n');
 		
-		// ignore the last empty newline split
         for (let i = 0; i < bookmarks.length - 1; i++) {
             let bookmarkLine = bookmarks[i];
             let components = bookmarkLine.split(' ');
             let bookmark = components[0];
-            if (bookmark in this._bookmarksToLabel)
+            if (bookmark in bookmarksToLabel)
                 continue;
             let label = null;
             if (components.length > 1)
@@ -321,20 +328,50 @@ FavoriteItem.prototype = {
 			if (file.query_file_type(0, null) == 2) {
 				continue;
 			} else {
-				this._bookmarksToLabel[bookmark] = label;
-				this._bookmarksOrder.push(bookmark);
+				bookmarksToLabel[bookmark] = label;
+				bookmarksOrder.push(bookmark);
 			}
         }
+		return bookmarksOrder;
+	},
 
+	queryBookmarks: function () {
 		// only returns an array of uris
 		// FIXME: handle labels in some manner
-		return this._bookmarksOrder;
+		return this._loadBookmarks ();
 	},
 
-	append: function () {
+	isFavorite: function (uri) {
+		let bookmarksContent = this._loadBookmarks ();
+        for (let i = 0; i < bookmarksContent.length; i++) {
+			if (uri == bookmarksContent[i])
+				return true;
+		}
+		return false;
 	},
 
-	deleteItemsWithUri: function () {
+	append: function (uri) {
+		let bookmarksContent = this._loadBookmarks ();
+		bookmarksContent.push(uri);
+        let bookmarks = bookmarksContent.join('\n');
+		bookmarks = bookmarks + "\n";
+
+        let success = GLib.file_set_contents(this._bookmarksPath, bookmarks, bookmarks.length);
+
+        if (!success)
+            return;
+	},
+
+	deleteBookmarkWithUri: function (uri) {
+		let bookmarksContent = this._loadBookmarks ();
+		bookmarksContent = _deleteArrayElement(bookmarksContent, uri);
+        let bookmarks = bookmarksContent.join('\n');
+		bookmarks = bookmarks + "\n";
+
+        let success = GLib.file_set_contents(this._bookmarksPath, bookmarks, bookmarks.length);
+
+        if (!success)
+            return;
 	}	
 
 }
@@ -345,12 +382,12 @@ FavoriteItem.prototype = {
 // This is an item that wraps a ZeitgeistItemInfo, which is in turn
 // created from an event as returned by the Zeitgeist D-Bus API.
 
-function EventItem (event, multiselect) {
-    this._init (event, multiselect);
+function EventItem (event, multi_select) {
+    this._init (event, multi_select);
 }
 
 EventItem.prototype = {
-    _init: function (event, multiselect) {
+    _init: function (event, multi_select) {
         if (!event)
             throw new Error ("event must not be null");
 
@@ -380,16 +417,18 @@ EventItem.prototype = {
         this._menuTimeoutId = 0;
 		this._menuDown = 0;
 
-		this.actor = new St.Group ({ reactive: true });
+		this.actor = new St.Group ({ reactive: true});
 		this.actor.add_actor (this._button);
 		this.actor.add_actor (this._closeButton);
+
 		this.actor.connect('enter-event', Lang.bind(this, this._onEnter));
         this.actor.connect('leave-event', Lang.bind(this, this._onLeave));
+
 
 		this._menu = null;
         this._menuManager = new PopupMenu.PopupMenuManager(this);
 
-		this._multiSelect = multiselect;
+		this._multiSelect = multi_select;
     },
 
     _removeMenuTimeout: function() {
@@ -413,6 +452,7 @@ EventItem.prototype = {
 						let e = elements[i];
 						e.item.launch ();
 					}
+					this._multiSelect.destroy ();
 				} else {
 					this._item_info.launch ();
 					Main.overview.hide ();
@@ -448,14 +488,16 @@ EventItem.prototype = {
 	_updatePosition: function () {
         let closeNode = this._closeButton.get_theme_node();
         this._closeButton._overlap = closeNode.get_length('-shell-close-overlap');
-		this._closeButton.x = this._button.width - (this._closeButton.width - 9);
+		this._closeButton.x = this._button.width - (this._closeButton.width - 1);
 		this._closeButton.y = -12;
 	},
 
     _removeItem: function (actor) {
-		this.actor.destroy ();
 		_deleteEvents(this._item_info.name);
 		this._multiSelect.unselect (this._button, this._item_info);
+		this._button.destroy();
+		this._closeButton.destroy();
+		//this.actor.destroy();
     },
 
     _onStyleChanged: function () {
@@ -525,8 +567,10 @@ ActivityIconMenu.prototype = {
         this.blockSourceEvents = true;
 
         this._source = source;
-
-        this.connect('activate', Lang.bind(this, this._onActivate));
+		this._favs = new FavoriteItem ();
+		this._item = this._source._item_info;
+        
+		this.connect('activate', Lang.bind(this, this._onActivate));
         this.connect('open-state-changed', Lang.bind(this, this._onOpenStateChanged));
 
         this.actor.add_style_class_name('app-well-menu');
@@ -543,9 +587,15 @@ ActivityIconMenu.prototype = {
 
     _redisplay: function() {
         this.removeAll();
-		this._openItemWith = this._appendMenuItem(_("Open with..."));
-		this._favoriteItem = this._appendMenuItem(_("Add to Favourites"));
-        this._appendSeparator();
+	
+		let apps = Gio.app_info_get_recommended_for_type(this._item.subject.mimetype); 
+		for (let i = 0; i < apps.length; i++) {
+			this._appendMenuItem(_("Open with " + apps[i].get_name()));
+		}
+		this._appendSeparator();
+		let isFavorite = this._favs.isFavorite(this._item.subject.uri);
+		this._toggleFavoriteMenuItem = this._appendMenuItem(isFavorite ? _("Remove from Favorites")
+		                                                             : _("Add to Favorites"));
         this._showItemInManager = this._appendMenuItem(_("Show in file manager"));
         this._moveFileToTrash = this._appendMenuItem(_("Move to trash"));
 	},
@@ -580,14 +630,21 @@ ActivityIconMenu.prototype = {
             let metaWindow = child._window;
             this.emit('activate-window', metaWindow);
         } else if (child == this._openItemWith) {
+		} else if (child == this._toggleFavoriteMenuItem) {
+			let isFavorite = this._favs.isFavorite(this._item.subject.uri);
+			if (isFavorite) {
+				this._favs.deleteBookmarkWithUri (this._item.subject.uri);
+				this._source.actor.destroy();
+			} else {
+				this._favs.append (this._item.subject.uri);
+			}
 		} else if (child == this._showItemInManager) {
-			Util.spawn(['nautilus', this._source._item_info.subject.origin]);
+			Util.spawn(['nautilus', this._item.subject.origin]);
 			Main.overview.hide();
 		} else if (child == this._moveFileToTrash) {
 			// remove the item from journal after trashing, it'll be recuperated
 			// as a new event by the Trash filter
-			let uri = this._source._item_info.subject.uri;
-			log("Trashing file: " + uri);
+			let uri = this._item.subject.uri;
 			try {
 			  let file = Gio.file_new_for_uri(uri);
 			  file.trash(null);
@@ -595,7 +652,7 @@ ActivityIconMenu.prototype = {
 			  Util.spawn(['gvfs-trash', uri]);
 			}
 			this._source.actor.destroy();
-			_deleteEvents(this._source._item_info.name);
+			_deleteEvents(this._item.name);
 		}
         this.close();
     }
@@ -644,6 +701,16 @@ function _deleteEvents(subject_text) {
 			  Zeitgeist.deleteEvents(events);	
           }));
 	return;
+}
+
+function _deleteArrayElement(array, element) {
+	for (let i = 0; i < array.length; i++) {
+		if (array[i] == element) {
+			array.splice(i, 1);
+			break;
+		}
+	}
+	return array;
 }
 
 
@@ -768,10 +835,9 @@ LayoutByTimeBuckets.prototype = {
 
     // Takes an array of events, straight from a Zeitgeist query callback, and
     // lays them out in the specified JournalLayout.
-    layoutEvents: function (events, journal_layout) {
+    layoutEvents: function (events, journal_layout, multi_select) {
         let old_bucket_index = -1;
-		let multiSelect = new MultiSelect (journal_layout);
-        
+
 		for (let i = 0; i < events.length; i++) {
             let e = events[i];
             let t = e.timestamp;
@@ -792,7 +858,7 @@ LayoutByTimeBuckets.prototype = {
                 old_bucket_index = bucket_index;
             }
 
-            let item = new EventItem (e, multiSelect);
+            let item = new EventItem (e, multi_select);
             journal_layout.appendItem (item);
             journal_layout.appendHSpace ();
         }
@@ -930,7 +996,7 @@ function EverythingByTypeFilter () {
 }
 
 function _makeEmptyEventTemplateWithInterpretation (interpretation) {
-    template = _makeEmptyEventTemplate ();
+    let template = _makeEmptyEventTemplate ();
     template[0].subjects[0].interpretation = interpretation;
     return template;
 }
@@ -1030,8 +1096,12 @@ FavoritesFilter.prototype = {
 
     _init: function () {
         Filter.prototype._init.call(this, _("Favorites"));
+		this.reload ();
+    },
+
+	reload: function () {
 		let favs = new FavoriteItem ();
-		let uris = favs.loadBookmarks ();
+		let uris = favs.queryBookmarks ();
 		let event_template = [];
 		for (let i = 0; i < uris.length; i++) {
 			let subject = new Zeitgeist.Subject (uris[i], "", "", "", "", "", "");
@@ -1046,7 +1116,8 @@ FavoritesFilter.prototype = {
                        0,
                        new LayoutByTimeBuckets ())
         ];
-    },
+	}
+		
 };
 
 
@@ -1088,7 +1159,7 @@ JournalDisplay.prototype = {
         this._scroll_view.set_policy (Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
         this._scroll_view.connect ("notify::mapped", Lang.bind (this, this._scrollViewMapCb));
 
-        this._setupFilters ();
+       this._setupFilters ();
     },
 
     _scrollViewMapCb: function (actor) {
@@ -1153,8 +1224,10 @@ JournalDisplay.prototype = {
                                                  style_class: 'journal' });
         this._scroll_view.add_actor (this._scrolled_box);
 
-        // For each query in the current filter, add a corresponding result section
+		// Create a multi-select list everytime a filter is viewed/reloaded
+		let multi_select = new MultiSelect ();
 
+        // For each query in the current filter, add a corresponding result section
         for (let i = 0; i < this._currentFilter.queries.length; i++) {
             let q = this._currentFilter.queries[i];
 
@@ -1167,7 +1240,7 @@ JournalDisplay.prototype = {
 
             let callback = Lang.bind (this,
                                       function (events) {
-                                          q.layout.layoutEvents (events, journal_layout);
+                                          q.layout.layoutEvents (events, journal_layout, multi_select);
                                           this._scrolled_box.add (journal_layout.actor);
                                       });
 
