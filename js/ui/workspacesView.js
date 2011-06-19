@@ -305,7 +305,6 @@ WorkspacesView.prototype = {
 
     updateWorkspaces: function(oldNumWorkspaces, newNumWorkspaces, lostWorkspaces) {
         let active = global.screen.get_active_workspace_index();
-
         for (let l = 0; l < lostWorkspaces.length; l++)
             lostWorkspaces[l].disconnectAll();
 

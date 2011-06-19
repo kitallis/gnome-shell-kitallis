@@ -122,7 +122,18 @@ JournalLayout.prototype = {
         this._items.push (i);
     },
 
-    clear: function () {
+	removeHSpace: function (item) {
+		for (let i = 0; i < this._items.length; i++) {
+			if (this._items[i].child == item) {
+				this._items.splice(i, 1);
+				if (this._items[j=i-1].type == "hspace")
+					this._items.splice(j, 1);
+				break;
+			}
+		}
+    },
+
+	clear: function () {
         this._items = [];
         this._container.destroy_children ();
     },
@@ -235,7 +246,7 @@ MultiSelect.prototype = {
 		else
 			this._multi_select = false;
 
-		if (this._isSelected (source) || this._multi_select) {
+		if (this.isSelected (item) || this._multi_select) {
 			let e = { source : source,
 					  item: item,
 					  selected: true };
@@ -256,10 +267,10 @@ MultiSelect.prototype = {
 		}
 	},
 
-	_isSelected: function (source) {
+	isSelected: function (item) {
 		for (let i = 0; i < this._elements.length; i++) {
 			let e = this._elements[i];
-			if ((e.source == source) && e.selected) {
+			if ((e.item == item) && e.selected) {
 				return false;
 			}
 		}
@@ -382,12 +393,12 @@ FavoriteItem.prototype = {
 // This is an item that wraps a ZeitgeistItemInfo, which is in turn
 // created from an event as returned by the Zeitgeist D-Bus API.
 
-function EventItem (event, multi_select) {
-    this._init (event, multi_select);
+function EventItem (event, multi_select, journal_layout) {
+    this._init (event, multi_select, journal_layout);
 }
 
 EventItem.prototype = {
-    _init: function (event, multi_select) {
+    _init: function (event, multi_select, journal_layout) {
         if (!event)
             throw new Error ("event must not be null");
 
@@ -397,7 +408,12 @@ EventItem.prototype = {
                                                   return this._item_info.createIcon (size);
                                               })
                                             });
-        this._button = new St.Button ({ style_class: "journal-item",
+
+		this.actor = new St.Group ({ reactive: true});
+		this.actor.connect('enter-event', Lang.bind(this, this._onEnter));
+        this.actor.connect('leave-event', Lang.bind(this, this._onLeave)); 
+
+		this._button = new St.Button ({ style_class: "journal-item",
                                         reactive: true,
 										can_focus: true,
                                         button_mask: St.ButtonMask.ONE | St.ButtonMask.THREE, // assume button 2 (middle) does nothing
@@ -405,31 +421,31 @@ EventItem.prototype = {
                                         y_fill: true });
         this._button.set_child (this._icon.actor);
 		this._button.connect ('clicked', Lang.bind(this, this._onButtonPress));
-		
+
 		this._closeButton = new St.Button ({ style_class: "window-close" });
 		this._closeButton.connect ('clicked', Lang.bind(this, this._removeItem));
 		this._closeButton.connect ('style-changed',
 										 Lang.bind(this, this._onStyleChanged));
 
+		this.actor.add_actor (this._button);
+		this.actor.add_actor (this._closeButton);
+		
 		this._closeButton.hide();
 
 		this._idleToggleCloseId = 0;
         this._menuTimeoutId = 0;
 		this._menuDown = 0;
 
-		this.actor = new St.Group ({ reactive: true});
-		this.actor.add_actor (this._button);
-		this.actor.add_actor (this._closeButton);
-
-		this.actor.connect('enter-event', Lang.bind(this, this._onEnter));
-        this.actor.connect('leave-event', Lang.bind(this, this._onLeave));
-
-
 		this._menu = null;
         this._menuManager = new PopupMenu.PopupMenuManager(this);
 
-		this._multiSelect = multi_select;
+		this.multiSelect = multi_select;
+		this._journalLayout = journal_layout;
     },
+
+	_onDestroy: function() {
+		this._journalLayout.removeHSpace(this);
+	},
 
     _removeMenuTimeout: function() {
         if (this._menuTimeoutId > 0) {
@@ -444,21 +460,22 @@ EventItem.prototype = {
 		if (button == 1) {
 			let modifiers = Shell.get_event_state(Clutter.get_current_event ());
 			if (modifiers & Clutter.ModifierType.CONTROL_MASK) {
-				this._multiSelect.select (this._button, this._item_info);
+				this.multiSelect.select (this._button, this._item_info);
 			} else {
-				let elements = this._multiSelect.querySelections ();
+				let elements = this.multiSelect.querySelections ();
 				if (elements.length > 1) {
 					for (let i = 0; i < elements.length; i++) {
 						let e = elements[i];
 						e.item.launch ();
 					}
-					this._multiSelect.destroy ();
+					this.multiSelect.destroy ();
 				} else {
 					this._item_info.launch ();
 					Main.overview.hide ();
 				}
 			}
 		} else if (button == 3) {
+
 			this._popupMenu();
 			this._idleToggleCloseButton ();
 		}
@@ -493,11 +510,10 @@ EventItem.prototype = {
 	},
 
     _removeItem: function (actor) {
+        this.actor.connect('destroy', Lang.bind(this, this._onDestroy)); 
 		_deleteEvents(this._item_info.name);
-		this._multiSelect.unselect (this._button, this._item_info);
-		this._button.destroy();
-		this._closeButton.destroy();
-		//this.actor.destroy();
+		this.multiSelect.unselect (this._button, this._item_info);
+		this.actor.destroy();
     },
 
     _onStyleChanged: function () {
@@ -587,16 +603,24 @@ ActivityIconMenu.prototype = {
 
     _redisplay: function() {
         this.removeAll();
-	
-		let apps = Gio.app_info_get_recommended_for_type(this._item.subject.mimetype); 
-		for (let i = 0; i < apps.length; i++) {
-			this._appendMenuItem(_("Open with " + apps[i].get_name()));
-		}
-		this._appendSeparator();
-		let isFavorite = this._favs.isFavorite(this._item.subject.uri);
-		this._toggleFavoriteMenuItem = this._appendMenuItem(isFavorite ? _("Remove from Favorites")
+
+		let elements = this._source.multiSelect.querySelections ();
+		if (elements.length < 2 || this._source.multiSelect.isSelected(this._item)) {
+			let apps = Gio.app_info_get_recommended_for_type(this._item.subject.mimetype); 
+			if (apps.length > 0) {	  
+				for (let i = 0; i < apps.length; i++) {
+					this._appendMenuItem(_("Open with " + apps[i].get_name()));
+				}
+				this._appendSeparator();
+			}
+			let isFavorite = this._favs.isFavorite(this._item.subject.uri);
+			this._toggleFavoriteMenuItem = this._appendMenuItem(isFavorite ? _("Remove from Favorites")
 		                                                             : _("Add to Favorites"));
-        this._showItemInManager = this._appendMenuItem(_("Show in file manager"));
+		} else {
+			this._appendMenuItem(_("Launch items"));
+			this._appendSeparator();
+		}
+		this._showItemInManager = this._appendMenuItem(_("Show in file manager"));
         this._moveFileToTrash = this._appendMenuItem(_("Move to trash"));
 	},
 
@@ -626,6 +650,8 @@ ActivityIconMenu.prototype = {
     },
 
     _onActivate: function (actor, child) {
+		let elements = this._source.multiSelect.querySelections ();
+		log (elements.length);
         if (child._window) {
             let metaWindow = child._window;
             this.emit('activate-window', metaWindow);
@@ -641,6 +667,7 @@ ActivityIconMenu.prototype = {
 		} else if (child == this._showItemInManager) {
 			Util.spawn(['nautilus', this._item.subject.origin]);
 			Main.overview.hide();
+			log (elements.length);
 		} else if (child == this._moveFileToTrash) {
 			// remove the item from journal after trashing, it'll be recuperated
 			// as a new event by the Trash filter
@@ -705,6 +732,7 @@ function _deleteEvents(subject_text) {
 
 function _deleteArrayElement(array, element) {
 	for (let i = 0; i < array.length; i++) {
+		log (array[i].type + array.length);
 		if (array[i] == element) {
 			array.splice(i, 1);
 			break;
@@ -858,7 +886,8 @@ LayoutByTimeBuckets.prototype = {
                 old_bucket_index = bucket_index;
             }
 
-            let item = new EventItem (e, multi_select);
+			// bad hack?
+            let item = new EventItem (e, multi_select, journal_layout);
             journal_layout.appendItem (item);
             journal_layout.appendHSpace ();
         }
@@ -985,7 +1014,7 @@ EverythingFilter.prototype = {
                        _makeEmptyEventTemplate (),
                        Zeitgeist.ResultType.MOST_RECENT_SUBJECTS,
                        ALL_THE_TIME,
-                       10,
+                       5,
                        new LayoutByTimeBuckets ())
         ];
     }
@@ -1141,7 +1170,9 @@ JournalDisplay.prototype = {
     _init: function () {
         this._box = new St.BoxLayout ({ vertical: false,
                                         style_class: 'all-app' });
-	this.actor = this._box;
+		this.actor = this._box;
+
+		this._box.connect ('destroy', Lang.bind (this, this._foo));
 
         this._scroll_view = new St.ScrollView ({ x_fill: true,
                                                  y_fill: true,
@@ -1161,6 +1192,10 @@ JournalDisplay.prototype = {
 
        this._setupFilters ();
     },
+
+	_foo: function() {
+		log ("called");
+	},
 
     _scrollViewMapCb: function (actor) {
         if (this._scroll_view.mapped)
@@ -1230,10 +1265,10 @@ JournalDisplay.prototype = {
         // For each query in the current filter, add a corresponding result section
         for (let i = 0; i < this._currentFilter.queries.length; i++) {
             let q = this._currentFilter.queries[i];
-
-            let journal_layout = new JournalLayout ();
-
-            if (q.name) {
+			
+			let journal_layout = new JournalLayout ();
+            
+			if (q.name) {
                 journal_layout.appendItem (new HeadingItem (q.name)); // FIXME: style this differently
                 journal_layout.appendNewline ();
             }
