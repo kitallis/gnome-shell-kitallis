@@ -126,8 +126,8 @@ JournalLayout.prototype = {
 		for (let i = 0; i < this._items.length; i++) {
 			if (this._items[i].child == item) {
 				this._items.splice(i, 1);
-				if (this._items[j=i-1].type == "hspace")
-					this._items.splice(j, 1);
+				if (this._items[i-1].type == "hspace")
+					this._items.splice(i-1, 1);
 				break;
 			}
 		}
@@ -463,24 +463,27 @@ EventItem.prototype = {
 				this.multiSelect.select (this._button, this._item_info);
 			} else {
 				let elements = this.multiSelect.querySelections ();
-				if (elements.length > 1) {
-					for (let i = 0; i < elements.length; i++) {
-						let e = elements[i];
-						e.item.launch ();
-					}
-					this.multiSelect.destroy ();
-				} else {
-					this._item_info.launch ();
-					Main.overview.hide ();
-				}
+				this._launchAll(elements);
 			}
 		} else if (button == 3) {
-
 			this._popupMenu();
 			this._idleToggleCloseButton ();
 		}
 		return true;
     },
+
+	_launchAll: function(elements) {
+		if (elements.length > 1) {
+			for (let i = 0; i < elements.length; i++) {
+				let e = elements[i];
+				e.item.launch ();
+			}
+			this.multiSelect.destroy ();
+		} else {
+			this._item_info.launch ();
+			Main.overview.hide ();
+		}
+	},
 
 	_onEnter: function() {
 		this._closeButton.show();
@@ -505,16 +508,19 @@ EventItem.prototype = {
 	_updatePosition: function () {
         let closeNode = this._closeButton.get_theme_node();
         this._closeButton._overlap = closeNode.get_length('-shell-close-overlap');
-		this._closeButton.x = this._button.width - (this._closeButton.width - 1);
-		this._closeButton.y = -12;
+		this._closeButton.x = this._button.width - (this._closeButton.width - 10);
+		this._closeButton.y = -15;
 	},
 
-    _removeItem: function (actor) {
+    _removeItem: function () {
         this.actor.connect('destroy', Lang.bind(this, this._onDestroy)); 
 		_deleteEvents(this._item_info.name);
 		this.multiSelect.unselect (this._button, this._item_info);
 		this.actor.destroy();
     },
+
+	destroy: function (source, item) {
+	},
 
     _onStyleChanged: function () {
 		this._updatePosition ();
@@ -585,7 +591,10 @@ ActivityIconMenu.prototype = {
         this._source = source;
 		this._favs = new FavoriteItem ();
 		this._item = this._source._item_info;
-        
+       
+		this._openWith = [];
+		this._openWithItem = [];
+
 		this.connect('activate', Lang.bind(this, this._onActivate));
         this.connect('open-state-changed', Lang.bind(this, this._onOpenStateChanged));
 
@@ -603,25 +612,28 @@ ActivityIconMenu.prototype = {
 
     _redisplay: function() {
         this.removeAll();
-
 		let elements = this._source.multiSelect.querySelections ();
+		
 		if (elements.length < 2 || this._source.multiSelect.isSelected(this._item)) {
 			let apps = Gio.app_info_get_recommended_for_type(this._item.subject.mimetype); 
 			if (apps.length > 0) {	  
 				for (let i = 0; i < apps.length; i++) {
-					this._appendMenuItem(_("Open with " + apps[i].get_name()));
+					this._openWith.push(this._appendMenuItem(_("Open with " + apps[i].get_name())));
+					this._openWithItem.push(apps[i]);
 				}
 				this._appendSeparator();
 			}
 			let isFavorite = this._favs.isFavorite(this._item.subject.uri);
 			this._toggleFavoriteMenuItem = this._appendMenuItem(isFavorite ? _("Remove from Favorites")
 		                                                             : _("Add to Favorites"));
+			this._showItemInManager = this._appendMenuItem(_("Show in file manager"));
+			this._moveFileToTrash = this._appendMenuItem(_("Move to trash"));
 		} else {
-			this._appendMenuItem(_("Launch items"));
+			this._launchAllItems = this._appendMenuItem(_("Launch items"));
 			this._appendSeparator();
+			this._showItemsInManager = this._appendMenuItem(_("Show items file manager"));
+			this._moveFilesToTrash = this._appendMenuItem(_("Move items to trash"));
 		}
-		this._showItemInManager = this._appendMenuItem(_("Show in file manager"));
-        this._moveFileToTrash = this._appendMenuItem(_("Move to trash"));
 	},
 
     _appendSeparator: function () {
@@ -651,11 +663,15 @@ ActivityIconMenu.prototype = {
 
     _onActivate: function (actor, child) {
 		let elements = this._source.multiSelect.querySelections ();
+		let menuIndex = this._openWith.indexOf(child);
 		log (elements.length);
         if (child._window) {
             let metaWindow = child._window;
             this.emit('activate-window', metaWindow);
-        } else if (child == this._openItemWith) {
+        } else if (menuIndex > -1) {
+			  this._openWithItem[menuIndex].launch_uris([this._item.subject.uri], null);
+		} else if (child == this._launchAllItems) {
+			this._source._launchAll(elements);
 		} else if (child == this._toggleFavoriteMenuItem) {
 			let isFavorite = this._favs.isFavorite(this._item.subject.uri);
 			if (isFavorite) {
@@ -665,9 +681,10 @@ ActivityIconMenu.prototype = {
 				this._favs.append (this._item.subject.uri);
 			}
 		} else if (child == this._showItemInManager) {
-			Util.spawn(['nautilus', this._item.subject.origin]);
+			Util.spawn(['nautilus', this._item.subject.uri]);
 			Main.overview.hide();
-			log (elements.length);
+		} else if (child == this._showItemsInManager) {
+			this._launchItemsInManager(elements);
 		} else if (child == this._moveFileToTrash) {
 			// remove the item from journal after trashing, it'll be recuperated
 			// as a new event by the Trash filter
@@ -678,11 +695,44 @@ ActivityIconMenu.prototype = {
 			} catch(e) {
 			  Util.spawn(['gvfs-trash', uri]);
 			}
-			this._source.actor.destroy();
-			_deleteEvents(this._item.name);
+			this._source._removeItem();
+		} else if (child == this._moveFilesToTrash) {
+			this._moveItemsToTrash(elements);
 		}
         this.close();
-    }
+		this._source.multiSelect.destroy ();
+    },
+	
+	// TOO REDUNDANT FIXME
+
+	_launchItemsInManager: function(elements) {
+		if (elements.length > 1) {
+			for (let i = 0; i < elements.length; i++) {
+				let e = elements[i];
+				Util.spawn(['nautilus', e.item.subject.origin]);
+			}
+		} else {
+			Util.spawn(['nautilus', this._item.subject.origin]);
+			Main.overview.hide ();
+		}
+	},
+
+	_moveItemsToTrash: function(elements) {
+		if (elements.length > 1) {
+			for (let i = 0; i < elements.length; i++) {
+				let e = elements[i];
+				let uri = e.item.subject.uri;
+				try {
+				  let file = Gio.file_new_for_uri(uri);
+				  file.trash(null);
+				} catch(e) {
+				  Util.spawn(['gvfs-trash', uri]);
+				}
+				this._source._removeItem();
+			}
+		}
+	}
+
 };
 
 
@@ -1014,7 +1064,7 @@ EverythingFilter.prototype = {
                        _makeEmptyEventTemplate (),
                        Zeitgeist.ResultType.MOST_RECENT_SUBJECTS,
                        ALL_THE_TIME,
-                       5,
+                       10,
                        new LayoutByTimeBuckets ())
         ];
     }
@@ -1172,8 +1222,6 @@ JournalDisplay.prototype = {
                                         style_class: 'all-app' });
 		this.actor = this._box;
 
-		this._box.connect ('destroy', Lang.bind (this, this._foo));
-
         this._scroll_view = new St.ScrollView ({ x_fill: true,
                                                  y_fill: true,
 					         y_align: St.Align.START,
@@ -1192,10 +1240,6 @@ JournalDisplay.prototype = {
 
        this._setupFilters ();
     },
-
-	_foo: function() {
-		log ("called");
-	},
 
     _scrollViewMapCb: function (actor) {
         if (this._scroll_view.mapped)
@@ -1239,8 +1283,9 @@ JournalDisplay.prototype = {
         this._addFilter (new NewFilter ());
         this._addFilter (new FrequentFilter ());
         this._addFilter (new FavoritesFilter ());
-
-        this._addFilter (new ByTypeFilter (_("Documents"), Semantic.NFO_DOCUMENT));
+        	
+		this._addFilter (new ByTypeFilter (_("Conversations"), Semantic.NMO_IMMESSAGE));
+		this._addFilter (new ByTypeFilter (_("Documents"), Semantic.NFO_DOCUMENT));
         this._addFilter (new ByTypeFilter (_("Pictures"), Semantic.NFO_IMAGE));
         this._addFilter (new ByTypeFilter (_("Music"), Semantic.NFO_AUDIO));
         this._addFilter (new ByTypeFilter (_("Videos"), Semantic.NFO_VIDEO));
