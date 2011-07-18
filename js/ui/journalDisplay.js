@@ -476,11 +476,17 @@ EventItem.prototype = {
 		if (elements.length > 1) {
 			for (let i = 0; i < elements.length; i++) {
 				let e = elements[i];
-				e.item.launch ();
+				if (e.item.subject.interpretation == Semantic.NMO_IMMESSAGE)
+					Util.spawn(['empathy', e.item.subject.uri]);
+				else
+					e.item.launch ();
 			}
 			this.multiSelect.destroy ();
 		} else {
-			this._item_info.launch ();
+			if (this._item_info.subject.interpretation == Semantic.NMO_IMMESSAGE)
+				Util.spawn(['empathy', this._item_info.subject.uri]);
+			else
+				this._item_info.launch ();
 			Main.overview.hide ();
 		}
 	},
@@ -614,14 +620,21 @@ ActivityIconMenu.prototype = {
         this.removeAll();
 		let elements = this._source.multiSelect.querySelections ();
 		
+
 		if (elements.length < 2 || this._source.multiSelect.isSelected(this._item)) {
-			let apps = Gio.app_info_get_recommended_for_type(this._item.subject.mimetype); 
-			if (apps.length > 0) {	  
-				for (let i = 0; i < apps.length; i++) {
-					this._openWith.push(this._appendMenuItem(_("Open with " + apps[i].get_name())));
-					this._openWithItem.push(apps[i]);
-				}
+			if (this._item.subject.interpretation == Semantic.NMO_IMMESSAGE) {
+				this._startConversation = this._appendMenuItem(_("Start a conversation"));
 				this._appendSeparator();
+			}
+			else {
+				let apps = Gio.app_info_get_recommended_for_type(this._item.subject.mimetype); 
+				if (apps.length > 0) {	  
+					for (let i = 0; i < apps.length; i++) {
+						this._openWith.push(this._appendMenuItem(_("Open with " + apps[i].get_name())));
+						this._openWithItem.push(apps[i]);
+					}
+					this._appendSeparator();
+				}
 			}
 			let isFavorite = this._favs.isFavorite(this._item.subject.uri);
 			this._toggleFavoriteMenuItem = this._appendMenuItem(isFavorite ? _("Remove from Favorites")
@@ -698,6 +711,8 @@ ActivityIconMenu.prototype = {
 			this._source._removeItem();
 		} else if (child == this._moveFilesToTrash) {
 			this._moveItemsToTrash(elements);
+		} else if (child == this._startConversation) {
+			Util.spawn(['empathy', this._item.subject.uri]);
 		}
         this.close();
 		this._source.multiSelect.destroy ();
