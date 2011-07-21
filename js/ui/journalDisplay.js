@@ -330,6 +330,8 @@ FavoriteItem.prototype = {
             let bookmarkLine = bookmarks[i];
             let components = bookmarkLine.split(' ');
             let bookmark = components[0];
+			if (!bookmark)
+				continue;
             if (bookmark in bookmarksToLabel)
                 continue;
             let label = null;
@@ -349,7 +351,11 @@ FavoriteItem.prototype = {
 	queryBookmarks: function () {
 		// only returns an array of uris
 		// FIXME: handle labels in some manner
-		return this._loadBookmarks ();
+		let bookmarkList = this._loadBookmarks ();
+		if (!bookmarkList)
+			return []
+		else 
+			return bookmarkList;
 	},
 
 	isFavorite: function (uri) {
@@ -429,7 +435,7 @@ EventItem.prototype = {
 
 		this.actor.add_actor (this._button);
 		this.actor.add_actor (this._closeButton);
-		
+
 		this._closeButton.hide();
 
 		this._idleToggleCloseId = 0;
@@ -1196,20 +1202,23 @@ FavoritesFilter.prototype = {
 	reload: function () {
 		let favs = new FavoriteItem ();
 		let uris = favs.queryBookmarks ();
+
 		let event_template = [];
 		for (let i = 0; i < uris.length; i++) {
 			let subject = new Zeitgeist.Subject (uris[i], "", "", "", "", "", "");
 			event_template[i] = new Zeitgeist.Event ("", "", "", [subject], "");
 		}
 
-        this.queries = [
-            new Query (null,
-                       event_template,
-                       Zeitgeist.ResultType.MOST_RECENT_SUBJECTS,
-                       ALL_THE_TIME,
-                       0,
-                       new LayoutByTimeBuckets ())
-        ];
+		if (event_template.length > 0) {
+			this.queries = [
+				new Query (null,
+						  event_template,
+						  Zeitgeist.ResultType.MOST_RECENT_SUBJECTS,
+						  ALL_THE_TIME,
+						  0,
+						  new LayoutByTimeBuckets ())
+			];
+		}
 	}
 		
 };

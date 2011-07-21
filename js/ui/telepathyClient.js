@@ -223,10 +223,11 @@ Source.prototype = {
         }
     },
 
-    open: function(notification) {
+    open: function() {
         let props = {};
         props[Tp.PROP_CHANNEL_CHANNEL_TYPE] = Tp.IFACE_CHANNEL_TYPE_TEXT;
         [props[Tp.PROP_CHANNEL_TARGET_HANDLE], props[Tp.PROP_CHANNEL_TARGET_HANDLE_TYPE]] = this._channel.get_handle();
+        prop[Tp.PROP_CHANNEL_TARGET_ID] = this._contact; 
 
         let req = Tp.AccountChannelRequest.new(this._account, props, global.get_current_time());
 
