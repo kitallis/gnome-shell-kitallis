@@ -21,6 +21,7 @@
  */
 
 const Clutter = imports.gi.Clutter;
+const DBus = imports.dbus;
 const GLib = imports.gi.GLib;
 const Gio = imports.gi.Gio;
 const Gtk = imports.gi.Gtk;
@@ -32,6 +33,7 @@ const Mainloop = imports.mainloop;
 const Gettext = imports.gettext.domain('gnome-shell');
 const _ = Gettext.gettext;
 const C_ = Gettext.pgettext;
+const Tp = imports.gi.TelepathyGLib;
 
 const Calendar = imports.ui.calendar;
 const DocInfo = imports.misc.docInfo;
@@ -128,6 +130,8 @@ JournalLayout.prototype = {
 				this._items.splice(i, 1);
 				if (this._items[i-1].type == "hspace")
 					this._items.splice(i-1, 1);
+				if (this._items[i].type == "hspace")
+					this._items.splice(i, 1);
 				break;
 			}
 		}
@@ -520,8 +524,14 @@ EventItem.prototype = {
 	_updatePosition: function () {
         let closeNode = this._closeButton.get_theme_node();
         this._closeButton._overlap = closeNode.get_length('-shell-close-overlap');
-		this._closeButton.x = this._button.width - (this._closeButton.width - 10);
-		this._closeButton.y = -15;
+		
+		let [buttonX, buttonY] = this.actor.get_position();
+		let [buttonWidth, buttonHeight] = this.actor.get_size();
+		buttonWidth = this.actor.scale_x * buttonWidth;
+		buttonHeight = this.actor.scale_y * buttonHeight;
+
+		this._closeButton.y = buttonY - (this._closeButton.height - this._closeButton._overlap);
+		this._closeButton.x = buttonX + (buttonWidth - this._closeButton._overlap);
 	},
 
     _removeItem: function () {
@@ -624,12 +634,14 @@ ActivityIconMenu.prototype = {
 
     _redisplay: function() {
         this.removeAll();
-		let elements = this._source.multiSelect.querySelections ();
+		let selections = this._source.multiSelect.querySelections ();
 		
-
-		if (elements.length < 2 || this._source.multiSelect.isSelected(this._item)) {
+		if (selections.length < 2 || this._source.multiSelect.isSelected(this._item)) {
 			if (this._item.subject.interpretation == Semantic.NMO_IMMESSAGE) {
-				this._startConversation = this._appendMenuItem(_("Start a conversation"));
+				this._startConversation = this._appendMenuItem(_("Start a new conversation"));
+				// dead menu entry, will probably be replaced by an option to launch gnome-contacts 
+				// http://blogs.gnome.org/alexl/2011/06/13/announcing-gnome-contacts/
+				this._previousConversations = this._appendMenuItem(_("Previous conversations"));
 				this._appendSeparator();
 			}
 			else {
@@ -681,16 +693,15 @@ ActivityIconMenu.prototype = {
     },
 
     _onActivate: function (actor, child) {
-		let elements = this._source.multiSelect.querySelections ();
+		let selections = this._source.multiSelect.querySelections ();
 		let menuIndex = this._openWith.indexOf(child);
-		log (elements.length);
         if (child._window) {
             let metaWindow = child._window;
             this.emit('activate-window', metaWindow);
         } else if (menuIndex > -1) {
 			  this._openWithItem[menuIndex].launch_uris([this._item.subject.uri], null);
 		} else if (child == this._launchAllItems) {
-			this._source._launchAll(elements);
+			this._source._launchAll(selections);
 		} else if (child == this._toggleFavoriteMenuItem) {
 			let isFavorite = this._favs.isFavorite(this._item.subject.uri);
 			if (isFavorite) {
@@ -703,7 +714,7 @@ ActivityIconMenu.prototype = {
 			Util.spawn(['nautilus', this._item.subject.uri]);
 			Main.overview.hide();
 		} else if (child == this._showItemsInManager) {
-			this._launchItemsInManager(elements);
+			this._launchItemsInManager(selections);
 		} else if (child == this._moveFileToTrash) {
 			// remove the item from journal after trashing, it'll be recuperated
 			// as a new event by the Trash filter
@@ -716,14 +727,32 @@ ActivityIconMenu.prototype = {
 			}
 			this._source._removeItem();
 		} else if (child == this._moveFilesToTrash) {
-			this._moveItemsToTrash(elements);
+			this._moveItemsToTrash(selections);
 		} else if (child == this._startConversation) {
-			Util.spawn(['empathy', this._item.subject.uri]);
+			this._telepathyConversationLaunch(this._item.subject.origin, this._item.subject.uri);
+			//Util.spawn(['empathy', this._item.subject.uri]);
 		}
         this.close();
 		this._source.multiSelect.destroy ();
     },
-	
+
+
+	_telepathyConversationLaunch: function(account_id, contact_id) {
+		let props = {};
+		//let dbus = Tp.DBusDaemon.dup();
+		let account_manager = new Tp.AccountManager.dup();
+
+		let account = account_manager.ensure_account(account_id);
+		
+        props[Tp.PROP_CHANNEL_CHANNEL_TYPE] = Tp.IFACE_CHANNEL_TYPE_TEXT;
+        props[Tp.PROP_CHANNEL_TARGET_HANDLE_TYPE] = Tp.HandleType.CONTACT; 
+        props[Tp.PROP_CHANNEL_TARGET_ID] = contact_id; 
+
+        let req = new Tp.AccountChannelRequest(account, props, global.get_current_time());
+
+        req.ensure_channel_async('', null, null);
+	}, 
+
 	// TOO REDUNDANT FIXME
 
 	_launchItemsInManager: function(elements) {
@@ -803,7 +832,6 @@ function _deleteEvents(subject_text) {
 
 function _deleteArrayElement(array, element) {
 	for (let i = 0; i < array.length; i++) {
-		log (array[i].type + array.length);
 		if (array[i] == element) {
 			array.splice(i, 1);
 			break;

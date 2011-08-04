@@ -1659,7 +1659,7 @@ StTooltip StLabel {
 /* Journal */
 
 .journal {
-    item-spacing: 24px;
+    item-spacing: 36px;
     row-spacing: 24px;
     color: white;
 }
