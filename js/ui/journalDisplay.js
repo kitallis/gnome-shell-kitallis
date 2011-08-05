@@ -502,6 +502,7 @@ EventItem.prototype = {
 	},
 
 	_onEnter: function() {
+		this._closeButton.set_position (Math.floor(this._closeButton.x), Math.floor(this._closeButton.y));
 		this._closeButton.show();
     },
 	
@@ -546,7 +547,6 @@ EventItem.prototype = {
 
     _onStyleChanged: function () {
 		this._updatePosition ();
-		this._closeButton.set_position (Math.floor(this._closeButton.x), Math.floor(this._closeButton.y));
     },
 
     _popupMenu: function() {
@@ -1224,10 +1224,7 @@ FavoritesFilter.prototype = {
 
     _init: function () {
         Filter.prototype._init.call(this, _("Favorites"));
-		this.reload ();
-    },
 
-	reload: function () {
 		let favs = new FavoriteItem ();
 		let uris = favs.queryBookmarks ();
 
@@ -1321,7 +1318,10 @@ JournalDisplay.prototype = {
         this._filter_box.add (filter.button, { expand: false, x_fill: false, y_fill: false });
 
         filter.button.connect ("clicked", Lang.bind (this, function () {
-                this._selectFilter (filter);
+				if (filter.name == "Favorites")
+					this._selectFilter (new FavoritesFilter ());
+				else
+					this._selectFilter (filter);
         }));
     },
 
