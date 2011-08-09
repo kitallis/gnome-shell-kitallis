@@ -502,7 +502,6 @@ EventItem.prototype = {
 	},
 
 	_onEnter: function() {
-		this._closeButton.set_position (Math.floor(this._closeButton.x), Math.floor(this._closeButton.y));
 		this._closeButton.show();
     },
 	
@@ -525,12 +524,13 @@ EventItem.prototype = {
 	_updatePosition: function () {
         let closeNode = this._closeButton.get_theme_node();
         this._closeButton._overlap = closeNode.get_length('-shell-close-overlap');
+
+		let [buttonX, buttonY] = this._button.get_position();
+		let [buttonWidth, buttonHeight] = this._button.get_size();
 		
-		let [buttonX, buttonY] = this.actor.get_position();
-		let [buttonWidth, buttonHeight] = this.actor.get_size();
 		buttonWidth = this.actor.scale_x * buttonWidth;
 		buttonHeight = this.actor.scale_y * buttonHeight;
-
+		
 		this._closeButton.y = buttonY - (this._closeButton.height - this._closeButton._overlap);
 		this._closeButton.x = buttonX + (buttonWidth - this._closeButton._overlap);
 	},
@@ -547,6 +547,7 @@ EventItem.prototype = {
 
     _onStyleChanged: function () {
 		this._updatePosition ();
+		this._closeButton.set_position (Math.floor(this._closeButton.x), Math.floor(this._closeButton.y));
     },
 
     _popupMenu: function() {
@@ -1286,8 +1287,8 @@ JournalDisplay.prototype = {
 
         this._scroll_view.set_policy (Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
         this._scroll_view.connect ("notify::mapped", Lang.bind (this, this._scrollViewMapCb));
-
-       this._setupFilters ();
+		
+		this._setupFilters ();
     },
 
     _scrollViewMapCb: function (actor) {
@@ -1295,7 +1296,7 @@ JournalDisplay.prototype = {
             this._reload ();
     },
 
-    _selectFilter: function (filter) {
+	_selectFilter: function (filter) {
         // Note that filter.button got added in ::_addFilter(); it's not an intrinsic property of the Filter prototype
 
         for (let i = 0; i < this._filters.length; i++) {
@@ -1304,10 +1305,23 @@ JournalDisplay.prototype = {
             else
                 this._filters[i].button.remove_style_pseudo_class ("selected");
         }
+	},
 
+    _enableFilter: function (filter) {
+		this._selectFilter (filter);
+		this._loadFilter (filter);
+    },
+
+	_loadFilter: function (filter) {
         this._currentFilter = filter;
         this._reload ();
-    },
+	},
+
+	_getMethods: function (obj) {
+		for(var m in obj) {
+			log(m);
+		}
+	},
 
     _addFilter: function (filter) {
         this._filters.push (filter);
@@ -1318,12 +1332,20 @@ JournalDisplay.prototype = {
         this._filter_box.add (filter.button, { expand: false, x_fill: false, y_fill: false });
 
         filter.button.connect ("clicked", Lang.bind (this, function () {
-				if (filter.name == "Favorites")
-					this._selectFilter (new FavoritesFilter ());
-				else
-					this._selectFilter (filter);
+				this._reloadFilter (filter, new FavoritesFilter ());
         }));
     },
+
+	// Useful for reloading any 'Filter' that builds a dynamic 'Query'.
+	// Passing null will simply normally select the filter with the previous Query object.
+	_reloadFilter: function (filter, filter_name) {
+		if (filter.name == filter_name.name) {
+			this._selectFilter (filter);
+			this._loadFilter (filter_name);
+		} else {
+			this._enableFilter (filter);
+		}
+	},
 
     _setupFilters: function () {
         this._filters = [];
@@ -1343,7 +1365,7 @@ JournalDisplay.prototype = {
         this._addFilter (new ByTypeFilter (_("Videos"), Semantic.NFO_VIDEO));
         // FIXME: add the "other" category
 
-        this._selectFilter (everything);
+        this._enableFilter (everything);
     },
 
     _reload : function () {
