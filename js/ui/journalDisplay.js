@@ -831,6 +831,12 @@ function _deleteEvents(subject_text) {
 	return;
 }
 
+function getMethods(obj) {
+	for(var m in obj) {
+		log(m);
+	}
+}
+
 function _deleteArrayElement(array, element) {
 	for (let i = 0; i < array.length; i++) {
 		if (array[i] == element) {
@@ -1278,8 +1284,11 @@ JournalDisplay.prototype = {
 					         vfade: true });
 
         this._currentFilter = null;
+        this._currentCategory = 0;
         this._filter_box = new St.BoxLayout({ vertical: true, reactive: true });
 
+        this._filter_box.connect ("scroll-event", Lang.bind(this, this._scrollFilter));
+        
         this._box.add (this._scroll_view, { expand: true, y_fill: true, y_align: St.Align.START });
         this._box.add (this._filter_box, { expand: false, y_fill: false, y_align: St.Align.START });
 
@@ -1287,22 +1296,31 @@ JournalDisplay.prototype = {
 
         this._scroll_view.set_policy (Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
         this._scroll_view.connect ("notify::mapped", Lang.bind (this, this._scrollViewMapCb));
-		
+
 		this._setupFilters ();
     },
 
     _scrollViewMapCb: function (actor) {
         if (this._scroll_view.mapped)
-            this._reload ();
+            this._enableFilter (this._filters[0]); // Select the first filter everytime ScrollView is reloaded
+    },
+
+    _scrollFilter: function (actor, event) {
+        let direction = event.get_scroll_direction();
+        if (direction == Clutter.ScrollDirection.UP)
+            this._enableFilter(this._filters[Math.max(this._currentCategory - 1, 0)])
+        else if (direction == Clutter.ScrollDirection.DOWN)
+            this._enableFilter(this._filters[Math.min(this._currentCategory + 1, this._filters.length - 1)]);
     },
 
 	_selectFilter: function (filter) {
         // Note that filter.button got added in ::_addFilter(); it's not an intrinsic property of the Filter prototype
 
         for (let i = 0; i < this._filters.length; i++) {
-            if (this._filters[i] == filter)
+            if (this._filters[i] == filter) {
                 filter.button.add_style_pseudo_class ("selected");
-            else
+                this._currentCategory = i;
+            } else
                 this._filters[i].button.remove_style_pseudo_class ("selected");
         }
 	},
@@ -1315,12 +1333,6 @@ JournalDisplay.prototype = {
 	_loadFilter: function (filter) {
         this._currentFilter = filter;
         this._reload ();
-	},
-
-	_getMethods: function (obj) {
-		for(var m in obj) {
-			log(m);
-		}
 	},
 
     _addFilter: function (filter) {
@@ -1337,7 +1349,7 @@ JournalDisplay.prototype = {
     },
 
 	// Useful for reloading any 'Filter' that builds a dynamic 'Query'.
-	// Passing null will simply normally select the filter with the previous Query object.
+	// Passing null will normally select the filter with the original Query object.
 	_reloadFilter: function (filter, filter_name) {
 		if (filter.name == filter_name.name) {
 			this._selectFilter (filter);
